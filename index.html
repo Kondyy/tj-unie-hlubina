@@ -261,7 +261,7 @@ const CONFIG = {
   days: ['Po','Út','St','Čt','Pá','So','Ne'],
   account: '',                              // číslo účtu klubu pro platby (zobrazí se rodičům), např. '123456789/0800'
   lowAttendance: 75,                        // docházka pod tuto hodnotu (%) se zobrazí červeně
-  venues: ['Hřiště A','Hřiště B – Umělka','Hřiště C','Loučka','Hala'],                      // místa pro nové události
+  venues: ['Hřiště A','Hřiště B – Umělka','Hřiště C – Loučka','Hala'],                      // místa pro nové události
   roles: {p:'Rodič', c:'Trenér', v:'Vedení', a:'Správce'},                            // názvy rolí
   excuseReasons: ['Nemoc','Škola','Rodinné důvody'],                    // důvody omluvy
   noteTags: {g:'🟢 Pochvala', r:'🔴 Kázeň', y:'🟡 Zranění'},            // štítky trenérského deníku
@@ -270,7 +270,7 @@ const CONFIG = {
   msgTargets: {all:'📢 Všem členům', trainers:'🧢 Jen trenérům', user:'👤 Konkrétní osobě'}, // příjemci zpráv vedení
   msgBadges:  {all:['📢 Všem členům','z'], trainers:['🧢 Jen trenérům','wa'], user:['👤 Osobně vám','ok']},
   planner: { from: 900, to: 1140,                                      // časové okno plánovače v minutách (15:00–19:00)
-             fields: ['A','B','C','L','Hala'], teams: ['U7','U8','U9','U11'] },
+             fields: ['A','B','C','Hala'], teams: ['U7','U8','U9','U11'] },
   paidWords: /^(ano|a|1|x|✔|✓|zaplaceno|true|yes)$/i,                  // co v Excelu znamená "zaplaceno"
   priceInHeader: /[(\-–]\s*(\d[\d\s]*)\s*(kč|kc)?\s*\)?\s*$/i          // částka v záhlaví sloupce, např. "Dresy (600)"
 };
@@ -296,6 +296,7 @@ const DB = {
   users: {}, members: [], docs: {}, events: [], results: [], payItems: [], plan: [], messages: [],
   chats: {}, notifs: [], links: [], settings: {}, dm: [], dmContacts: [],
   att: {},          // docházka:        "idUdálosti|jménoHráče"  → 'P' | 'O' | 'N'
+  coachEv: {},      // druh a datum události u účasti trenéra: "idTrenéra|idUdálosti" → {k:'t', d:'2026-10-12'}
   coachNm: {},      // příjmení trenéra u jeho účasti: "idTrenéra|idUdálosti" → 'Kondaš'
   coachAtt: {},     // účast trenéra:   "idTrenéra|idUdálosti"    → 'y' | 'n'
   nominations: {},  // nominace:        idZápasu → [jména hráčů]
@@ -352,6 +353,7 @@ const UI = {
   admMsg: '', admOk: false,   // správa: výsledek poslední akce
   ovTeam: 'all', ovSearch: '',  // vedení: přehled docházky (filtr kategorie, hledání)
   imp: null,             // vedení: rozečtený import z Excelu
+  ai: null,              // import docházky z tabulky (náhled / výsledek)
   parSearch: '', dmWith: '', dmSearch: '',   // hledání rodičů; soukromé zprávy: otevřená konverzace, hledání osoby
   more: false,           // mobil: otevřená nabídka „Více“ ve spodní liště
   recovery: false        // po kliknutí na odkaz „zapomenuté heslo“ v e-mailu
@@ -382,6 +384,8 @@ class Util {
   static iso(x) { return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`; }
   /** Den v týdnu (0 = Po) z "2026-10-19". */
   static dayIndex(iso) { const [y, m, d] = iso.split('-').map(Number); return Math.round((new Date(y, m - 1, d) - Util.weekStart()) / 864e5); }
+  /** "2026-10-12" → "Po 12.10." */
+  static isoShort(iso) { const [y, m, d] = String(iso).split('-').map(Number); if (!y) return '—'; return `${CONFIG.days[(new Date(y, m - 1, d).getDay() + 6) % 7]} ${d}.${m}.`; }
   /** Popisek dne: 0 → "Po 19.10." */
   static date(d) { const x = Util.dayDate(d); return `${CONFIG.days[d]} ${x.getDate()}.${x.getMonth() + 1}.`; }
   /** Časová značka zprávy z databáze: "čt 15.10. 18:02". */
@@ -402,7 +406,7 @@ class Util {
   /** Červený odznak s počtem (nebo nic, když je 0). */
   static badge(n) { return n ? `<i class="bd">${n}</i>` : ''; }
   /** Název hřiště: 'A' → "Hřiště A", 'Hala' → "Hala". */
-  static venue(f) { return f == 'Hala' ? 'Hala' : f == 'L' ? 'Loučka' : f == 'B' ? 'Hřiště B – Umělka' : 'Hřiště ' + f; }
+  static venue(f) { return f == 'Hala' ? 'Hala' : f == 'C' ? 'Hřiště C – Loučka' : f == 'B' ? 'Hřiště B – Umělka' : 'Hřiště ' + f; }
   /** Stabilní odstín barvy podle textu (pro avatary). */
   static hue(s) { return [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 7); }
   /** Věk a ročník hráče: "9 let (ročník 2017)". */
@@ -429,6 +433,18 @@ class Model {
   static team(kid)       { const m = Model.member(kid); return m ? m.t : ''; }
   static membersOf(team) { return DB.members.filter(m => m.t == team); }
   static event(id)       { return DB.events.find(e => e.id == id); }
+  /** Docházka trenéra na tréninky: {p: přítomen, t: celkem, pct, abs: [data absencí od nejnovější]}. Počítají se tréninky, u kterých má potvrzeno „přijdu“ / „nemohu“. */
+  static coachStats(uid) {
+    let p = 0, t = 0; const abs = [];
+    Object.keys(DB.coachAtt).forEach(k => {
+      if (!k.startsWith(uid + '|')) return;
+      const ev = DB.coachEv[k] || {k: 't', d: ''};
+      if (ev.k != 't') return;
+      t++; if (DB.coachAtt[k] == 'y') p++; else abs.push(ev.d);
+    });
+    abs.sort().reverse();
+    return {p, t, pct: t ? Math.round(p / t * 100) : 0, abs};
+  }
   /** Příjmení trenérů, kteří potvrdili účast na události (bez potvrzení: příjmení určeného trenéra). */
   static coachSurnames(e) {
     const L = Object.keys(DB.coachAtt).filter(k => DB.coachAtt[k] == 'y' && k.slice(k.indexOf('|') + 1) == String(e.id)).map(k => DB.coachNm[k]).filter(Boolean);
@@ -596,8 +612,8 @@ class Auth {
   static reset() {
     Sync.stop();
     Object.assign(DB, {users:{}, members:[], docs:{}, events:[], results:[], payItems:[], plan:[], messages:[], chats:{}, notifs:[], links:[], settings:{}, dm:[], dmContacts:[],
-                       att:{}, coachAtt:{}, coachNm:{}, nominations:{}, carpool:{}, responses:{}, notes:{}, seen:{}});
-    UI.user = null; UI.asTeam = ''; UI.imp = null; UI.recovery = false; UI.more = false; UI.bell = false; UI.modal = null; UI.profile = false; UI.profMsg = ''; UI.pkSel = {}; UI.player = ''; UI.boot = false; UI.kid = ''; UI.editUser = ''; UI.dmWith = ''; UI.dmSearch = '';
+                       att:{}, coachAtt:{}, coachNm:{}, coachEv:{}, nominations:{}, carpool:{}, responses:{}, notes:{}, seen:{}});
+    UI.user = null; UI.asTeam = ''; UI.imp = null; UI.recovery = false; UI.more = false; UI.bell = false; UI.modal = null; UI.profile = false; UI.profMsg = ''; UI.pkSel = {}; UI.player = ''; UI.boot = false; UI.kid = ''; UI.editUser = ''; UI.dmWith = ''; UI.dmSearch = ''; UI.ai = null;
     UI.skipKeep = ['lg-pass', 'lg-email'];
     App.render();
   }
@@ -739,7 +755,8 @@ class Sync {
     },
     coach: async () => {
       const rows = await Sync.fetchAll('coach_attendance', q => q.order('event_id').order('coach_id'));
-      DB.coachAtt = {}; DB.coachNm = {}; rows.forEach(r => { const k = r.coach_id + '|' + r.event_id; DB.coachAtt[k] = r.state; DB.coachNm[k] = Util.surname(r.coach_name); });
+      DB.coachAtt = {}; DB.coachNm = {}; DB.coachEv = {};
+      rows.forEach(r => { const k = r.coach_id + '|' + r.event_id; DB.coachAtt[k] = r.state; DB.coachNm[k] = Util.surname(r.coach_name); DB.coachEv[k] = {k: r.ev_kind || 't', d: r.ev_date || ''}; });
     },
     noms: async () => {
       const rows = await Sync.fetchAll('nominations', q => q.order('event_id').order('player_id'));
@@ -1187,13 +1204,14 @@ class Attendance {
     const e = trainings.find(x => x.id == UI.attEvent), count = Model.membersOf(team).length;
     if (!e) {                                                         // 1) seznam tréninků
       UI.attEvent = 0;
-      return `<h2 style="margin-top:0">Tréninky ${team}</h2><div class="g2">${trainings.map(t => {
+      return `${Attendance.mine()}<h2>Tréninky ${team}</h2><div class="g2">${trainings.map(t => {
         const k = Attendance.marked(t);
         return `<div class="card ev ${t.x ? 'x' : 't'}" ${t.x ? '' : `style="cursor:pointer" onclick="Attendance.open('${t.id}')"`}>
           <div class="pay"><b>⚽ ${Util.date(t.d)} · ${t.t}</b><span class="pill ${t.x ? 'x' : k == count ? 'ok' : 'wa'}">${t.x ? 'Zrušeno' : k + '/' + count + ' označeno'}</span></div>
           <div class="mut">📍 ${esc(t.pl)}</div>${t.x ? '' : '<div class="mut">Klepnutím otevřete docházku →</div>'}
           <div class="row" style="margin-top:8px"><button class="btn" onclick="event.stopPropagation();Events.cancel('${t.id}')">${t.x ? 'Obnovit trénink' : 'Zrušit trénink'}</button><button class="btn" style="flex:none;color:var(--r)" onclick="event.stopPropagation();Events.remove('${t.id}')">🗑 Smazat</button></div></div>`;
       }).join('') || '<div class="card mut">Tento týden zatím žádný trénink. Tréninky se přidají automaticky podle rozvrhu hřišť, který nastavuje vedení.</div>'}</div>
+      ${AttImport.view()}
       <h2>+ Přidat trénink ručně</h2><div class="card">
         <div class="row"><select id="tr-day">${CONFIG.days.map((n, i) => `<option value="${i}">${Util.date(i)}</option>`).join('')}</select>
           <input id="tr-time" placeholder="Čas (16:00)"></div>
@@ -1215,6 +1233,15 @@ class Attendance {
   static marked(e) { return Model.membersOf(e.tm).filter(m => DB.att[e.id + '|' + m.n]).length; }
 
   /** Karta "Moje účast (trenér)" – trenér potvrdí, jestli přijde (u zrušení se upozorní vedení). */
+  /** Karta „Moje docházka“ trenéra: procenta, počet účastí a seznam absencí. */
+  static mine() {
+    const u = UI.user, st = Model.coachStats(u.id), low = st.pct < CONFIG.lowAttendance, shown = st.abs.slice(0, 8);
+    return `<div class="card"><div class="pay"><b>👤 Moje absence a docházka</b><span class="pill ${st.t ? (low ? 'no' : 'ok') : 'z'}">${st.t ? st.pct + ' % · ' + st.p + '/' + st.t : 'zatím bez údajů'}</span></div>
+      ${st.t ? `<div class="bar" style="margin:8px 0"><i style="width:${st.pct}%;background:${low ? 'var(--y)' : 'var(--g)'}"></i></div>
+        <div>${st.abs.length ? '<b>Moje absence:</b> ' + shown.map(d => esc(Util.isoShort(d))).join(', ') + (st.abs.length > shown.length ? ` a ${st.abs.length - shown.length} dalších` : '') : '<span class="cg">Žádná absence 👍</span>'}</div>`
+        : '<div class="mut" style="margin-top:6px">Docházka se počítá z toho, co u tréninků potvrdíte („Zúčastním se“ / „Nemohu“), nebo z importu tabulky níže.</div>'}</div>`;
+  }
+
   static coachCard(e, inline) {
     const v = DB.coachAtt[UI.user.id + '|' + e.id];
     return `<div class="${inline ? '' : 'card'}" style="${inline ? 'margin-top:10px' : ''}">
@@ -1233,7 +1260,7 @@ class Attendance {
   }
   static coachSet(id, v) {
     const e = Model.event(id);
-    DB.coachAtt[UI.user.id + '|' + id] = v; DB.coachNm[UI.user.id + '|' + id] = Util.surname(UI.user.name);
+    DB.coachAtt[UI.user.id + '|' + id] = v; DB.coachNm[UI.user.id + '|' + id] = Util.surname(UI.user.name); DB.coachEv[UI.user.id + '|' + id] = {k: e.k, d: Util.iso(Util.dayDate(e.d))};
     Sync.write('Účast se nepodařilo uložit', sb.from('coach_attendance').upsert({event_id: +id, coach_id: UI.user.id, state: v}, {onConflict: 'event_id,coach_id'}));
     if (v == 'n') Notifs.send('V', `⚠ Trenér ${UI.user.name} se nezúčastní: ${e.k == 'z' ? 'zápas' : 'trénink'} ${Util.date(e.d)} (${e.tm})`);
     App.render();
@@ -1632,7 +1659,7 @@ class Dm {
   }
 
   static open(id)  { UI.dmWith = id; UI.focusChat = true; App.render(); }
-  static back()    { UI.dmWith = ''; UI.dmSearch = ''; App.render(); }
+  static back()    { UI.dmWith = ''; UI.dmSearch = ''; UI.ai = null; App.render(); }
   static search(v) { UI.dmSearch = v; App.render(); const i = $('#dm-search'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 
   static async send() {
@@ -2044,7 +2071,17 @@ class AttOverview {
       ${L.map(r => `<div class="card"><div style="display:flex;gap:10px;align-items:center">${Util.avatar(r.m, 36)}
           <div style="flex:1;min-width:0"><b>${esc(r.m.full || r.m.n)}</b> <span class="mut">${esc(r.m.t)}</span>
             <div class="bar" style="margin-top:4px"><i style="width:${r.p}%;background:${r.p < CONFIG.lowAttendance ? 'var(--y)' : 'var(--g)'}"></i></div></div>
-          <div style="text-align:right"><b class="${r.p < CONFIG.lowAttendance ? 'cr' : 'cg'}">${r.p} %</b><div class="mut">${r.ps}/${r.tt}</div></div></div></div>`).join('') || '<div class="card mut">Nikdo nenalezen.</div>'}</div>`;
+          <div style="text-align:right"><b class="${r.p < CONFIG.lowAttendance ? 'cr' : 'cg'}">${r.p} %</b><div class="mut">${r.ps}/${r.tt}</div></div></div></div>`).join('') || '<div class="card mut">Nikdo nenalezen.</div>'}
+      ${AttOverview.coaches()}${AttImport.view()}</div>`;
+  }
+  /** Docházka trenérů (podle potvrzení „přijdu“ / „nemohu“ a importu). */
+  static coaches() {
+    const L = Object.values(DB.users).filter(x => x.r == 'c' && (UI.ovTeam == 'all' || x.team == UI.ovTeam) && Util.norm(x.name).includes(Util.norm(UI.ovSearch)))
+      .map(x => ({x, st: Model.coachStats(x.id)})).sort((a, b) => a.st.pct - b.st.pct);
+    if (!L.length) return '';
+    return `<h2>🧢 Trenéři</h2>` + L.map(({x, st}) => `<div class="card"><div style="display:flex;gap:10px;align-items:center"><div style="flex:1;min-width:0"><b>${esc(x.name)}</b> <span class="mut">${esc(x.team)}</span>
+      <div class="bar" style="margin-top:4px"><i style="width:${st.pct}%;background:${st.pct < CONFIG.lowAttendance ? 'var(--y)' : 'var(--g)'}"></i></div></div>
+      <div style="text-align:right"><b class="${st.pct < CONFIG.lowAttendance ? 'cr' : 'cg'}">${st.pct} %</b><div class="mut">${st.p}/${st.t}</div></div></div></div>`).join('');
   }
   static team(t) { UI.ovTeam = t; App.render(); }
   static search(v) { UI.ovSearch = v; App.render(); const i = $('#ov-search'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
@@ -2168,6 +2205,168 @@ class KidProfile {
         ${absent.length ? `<div style="margin-top:10px"><b>Absence tento týden</b>${absent.map(([e, s]) => `<div class="pl"><span>${e.k == 'z' ? '🏆 Zápas' : '⚽ Trénink'} · ${Util.date(e.d)}</span><span class="pill ${s == 'O' ? 'wa' : 'no'}">${s == 'O' ? 'omluven' : 'neomluven'}</span></div>`).join('')}</div>`
           : '<div class="mut" style="margin-top:8px">Tento týden žádná absence. 👍</div>'}
         <div class="mut" style="margin-top:8px">Docházku značí trenér na tréninku. Procenta zahrnují i dřívější tréninky.</div></div></div>`;
+  }
+}
+
+
+/* ---------------------------------------------------------------------
+   AttImport – import docházky z tabulky (Excel) pro trenéry a vedení
+   Očekávaný vzhled (jako klubová tabulka): nad jménem hráčů je řádek s hlavičkou „Post | Jméno | 3.8. | 4.8. | …“,
+   nad ním (v rozích) název kategorie, např. „U9“. Hráči mají ve sloupcích dat 1 (přítomen) nebo 0 (nepřítomen),
+   řádky „Trenér“ stejně. Prázdný / černý sloupec = trénink se nekonal. Sloupce „Celkem“ se ignorují.
+   Pro každý den se (pokud ještě není) založí trénink kategorie a uloží se docházka. Opakovaný import nic nezdvojuje.
+   --------------------------------------------------------------------- */
+class AttImport {
+  static view() {
+    const i = UI.ai;
+    return `<div class="card" style="margin-top:12px"><b>📥 Import docházky z tabulky</b>
+      <div class="mut">Nahrajte klubovou tabulku docházky (Excel). Načtou se hráči i trenéři, dny a hodnoty 1 / 0. Jména se hledají v soupisce bez ohledu na pořadí (příjmení jméno i jméno příjmení). Docházka za dny, které už v aplikaci jsou, se přepíše údaji z tabulky.</div>
+      <label class="btn" style="cursor:pointer;display:block;text-align:center;margin-top:8px">📂 Vybrat tabulku<input type="file" accept=".xlsx,.xls,.csv" hidden onchange="AttImport.read(this)"></label>
+      ${i && !i.done ? AttImport.preview(i) : ''}${i && i.done ? AttImport.report(i) : ''}</div>`;
+  }
+
+  static preview(i) {
+    return `<div style="margin-top:10px;border-top:1px solid var(--bd);padding-top:8px">
+      ${i.blocks.map(b => `<div style="margin-bottom:8px"><b>${esc(b.team)}</b> · ${b.dates.length} tréninků (${esc(Util.isoShort(b.dates[0] || ''))} – ${esc(Util.isoShort(b.dates[b.dates.length - 1] || ''))})
+        <div class="mut">Hráčů: ${b.players.length}${b.unmatched.length ? ` · nenalezeno v soupisce: ${b.unmatched.length}` : ''} · trenérů v tabulce: ${b.coaches.length}${b.skip ? ` · <span class="cr">${esc(b.skip)}</span>` : ''}</div>
+        ${b.unmatched.length ? `<div class="warn" style="margin-top:4px">Nenalezeno: ${b.unmatched.slice(0, 10).map(esc).join(', ')}${b.unmatched.length > 10 ? ' …' : ''}</div>` : ''}</div>`).join('') || '<div class="warn">V souboru jsem nenašel tabulku docházky (řádek s hlavičkou „Jméno“ a daty).</div>'}
+      ${i.notes.map(n => `<div class="mut">ℹ ${esc(n)}</div>`).join('')}
+      <label class="mut" style="margin-top:6px">Rok (prázdné = určí se automaticky)<input id="ai-year" type="number" min="2020" max="2100" placeholder="např. ${new Date().getFullYear()}" value="${esc(i.year || '')}" onchange="AttImport.setYear(this.value)"></label>
+      <div class="row" style="margin-top:8px"><button class="btn" onclick="AttImport.cancel()">Zrušit</button>
+        <button class="btn ok" ${i.blocks.some(b => b.players.length || b.coachRows.length) && !i.running ? '' : 'disabled'} onclick="AttImport.run()">${i.running ? 'Importuji… ' + i.progress : 'Provést import'}</button></div></div>`;
+  }
+
+  static report(i) {
+    const d = i.done;
+    return `<div style="margin-top:10px;border-top:1px solid var(--bd);padding-top:8px"><div class="cg"><b>✔ Import dokončen</b></div>
+      <div>Tréninků nových: <b>${d.newEvents}</b>, už existovalo: <b>${d.oldEvents}</b> · záznamů docházky hráčů: <b>${d.players}</b> · trenérů: <b>${d.coaches}</b></div>
+      ${d.errors.length ? `<div class="warn" style="margin-top:6px">⚠ ${d.errors.slice(0, 6).map(esc).join('<br>')}</div>` : ''}
+      <button class="btn" style="width:100%;margin-top:8px" onclick="AttImport.cancel()">Hotovo</button></div>`;
+  }
+
+  static cancel() { UI.ai = null; App.render(); }
+  static setYear(v) { if (UI.ai) { UI.ai.year = v; if (UI.ai.grids) { const y = UI.ai; UI.ai = Object.assign(AttImport.parseGrids(y.grids, +v || 0), {year: v, grids: y.grids}); } App.render(); } }
+
+  static read(input) {
+    const file = input.files[0]; if (!file) return;
+    if (!window.XLSX) { alert('Knihovnu pro Excel se nepodařilo načíst.'); return; }
+    const rd = new FileReader();
+    rd.onload = e => {
+      try {
+        const wb = XLSX.read(e.target.result, {type: 'array', cellDates: true});
+        const grids = wb.SheetNames.map(n => ({name: n, rows: XLSX.utils.sheet_to_json(wb.Sheets[n], {header: 1, raw: true, defval: null})}));
+        UI.ai = Object.assign(AttImport.parseGrids(grids, 0), {year: '', grids});
+      } catch (x) { UI.ai = {blocks: [], notes: ['Soubor se nepodařilo přečíst.'], year: '', done: null}; }
+      App.render();
+    };
+    rd.readAsArrayBuffer(file);
+    input.value = '';
+  }
+
+  // ---------- zpracování tabulky ----------
+  /** Slova jména bez diakritiky, bez závorky s ročníkem, seřazená (pořadí „příjmení jméno“ nehraje roli). */
+  static key(n) { return Util.norm(String(n || '').replace(/\(.*$/, '')).split(/\s+/).filter(Boolean).sort().join(' '); }
+
+  /** Buňka → {m, d} (měsíc, den) nebo null. Podporuje „3.8.“, „3. 8.“, „3.8.2026“, skutečné datum a pořadové číslo Excelu. */
+  static cellDate(v) {
+    if (v instanceof Date && !isNaN(v)) return {d: v.getDate(), m: v.getMonth() + 1, y: v.getFullYear(), real: true};
+    if (typeof v == 'number' && v > 40000 && v < 70000) { const x = new Date(Math.round((v - 25569) * 864e5)); return {d: x.getUTCDate(), m: x.getUTCMonth() + 1, y: x.getUTCFullYear(), real: true}; }
+    const m = typeof v == 'string' && v.trim().match(/^(\d{1,2})\.\s*(\d{1,2})\.?(?:\s*(\d{4}))?$/);
+    return m && +m[1] >= 1 && +m[1] <= 31 && +m[2] >= 1 && +m[2] <= 12 ? {d: +m[1], m: +m[2], y: m[3] ? +m[3] : 0, real: !!m[3]} : null;
+  }
+
+  /** Rok pro datum bez roku: aktuální; leží-li datum za více než 2 měsíce v budoucnosti, předchozí rok. */
+  static iso(c, year) {
+    let y = c.y || year || new Date().getFullYear();
+    if (!c.y && !year) { const dt = new Date(y, c.m - 1, c.d); if (dt - new Date() > 62 * 864e5) y--; }
+    return `${y}-${String(c.m).padStart(2, '0')}-${String(c.d).padStart(2, '0')}`;
+  }
+
+  /** Najde v listech všechny bloky tabulky docházky. */
+  static parseGrids(grids, year) {
+    const blocks = [], notes = [], me = UI.user, own = !Model.mgmt(me) ? me.team : '';
+    const teams = CONFIG.planner.teams;
+    grids.forEach(g => {
+      const R = g.rows || [];
+      R.forEach((row, ri) => {
+        const nc = (row || []).findIndex(v => Util.norm(String(v == null ? '' : v)) == 'jmeno'); if (nc < 0) return;
+        const dateCols = []; (row || []).forEach((v, ci) => { if (ci > nc) { const c = AttImport.cellDate(v); if (c) dateCols.push({ci, c}); } });
+        if (!dateCols.length) return;
+        // kategorie: buňka „U9“ v několika řádcích nad hlavičkou
+        let team = '';
+        for (let k = ri - 1; k >= Math.max(0, ri - 6) && !team; k--) for (const v of (R[k] || [])) { const t = String(v == null ? '' : v).trim().toUpperCase(); if (teams.includes(t)) { team = t; break; } }
+        const b = {sheet: g.name, team: team || own || '', dates: [], players: [], unmatched: [], coaches: [], coachRows: [], cols: dateCols, skip: ''};
+        const postCol = nc - 1;
+        for (let r = ri + 1; r < R.length; r++) {
+          const rw = R[r] || [], nm = rw[nc]; if (nm != null && Util.norm(String(nm)) == 'jmeno') break;               // další blok
+          const post = Util.norm(String(rw[postCol] == null ? '' : rw[postCol])), name = String(nm == null ? '' : nm).trim();
+          if (!name || !post) continue;
+          const vals = dateCols.map(dc => { const v = rw[dc.ci]; return v === 1 || v === '1' ? 1 : v === 0 || v === '0' ? 0 : null; });
+          if (post.startsWith('hrac')) b.players.push({name, vals});
+          else if (post.startsWith('trener')) b.coaches.push({name, vals});
+        }
+        // dny, kdy se trénovalo: aspoň jedna hodnota 0/1 ve sloupci
+        b.dates = []; b.use = [];
+        dateCols.forEach((dc, i) => { if (b.players.some(p => p.vals[i] != null) || b.coaches.some(p => p.vals[i] != null)) { b.dates.push(AttImport.iso(dc.c, year)); b.use.push(i); } });
+        if (!b.team) b.skip = 'chybí kategorie (např. „U9“ nad tabulkou)';
+        else if (own && b.team != own) b.skip = 'jiná kategorie než vaše – přeskočeno';
+        // přiřazení hráčů k soupisce
+        if (!b.skip) {
+          const pool = DB.members.filter(m => m.t == b.team), idx = {}; pool.forEach(m => { idx[AttImport.key(m.full || m.n)] = m; idx[AttImport.key(m.n)] = idx[AttImport.key(m.n)] || m; });
+          b.matched = []; b.players.forEach(p => { const m = idx[AttImport.key(p.name)]; if (m) b.matched.push({m, vals: p.vals}); else b.unmatched.push(p.name); });
+          // trenéři: vedení zná všechny účty, trenér jen sebe
+          const staff = Object.values(DB.users).filter(x => (x.r == 'c' || x.r == 'a') && (Model.mgmt(me) || x.id == me.id)), sidx = {}; staff.forEach(x => sidx[AttImport.key(x.name)] = x);
+          b.coachRows = []; b.coaches.forEach(c => { const x = sidx[AttImport.key(c.name)]; if (x) b.coachRows.push({x, vals: c.vals}); });
+          if (!Model.mgmt(me) && b.coaches.length > b.coachRows.length) notes.push(`${b.team}: řádky ostatních trenérů uloží vedení nebo si je naimportují oni sami.`);
+        }
+        blocks.push(b);
+      });
+    });
+    return {blocks, notes, running: false, progress: '', done: null};
+  }
+
+  static async run() {
+    const i = UI.ai; if (!i || i.running) return;
+    const year = +i.year || 0;
+    i.running = true; i.progress = ''; App.render();
+    const out = {newEvents: 0, oldEvents: 0, players: 0, coaches: 0, errors: []};
+    try {
+      for (const b of i.blocks) {
+        if (b.skip || !b.dates.length) continue;
+        i.progress = b.team; App.render();
+        const lo = b.dates[0] < b.dates[b.dates.length - 1] ? b.dates[0] : b.dates[b.dates.length - 1], dates = [...new Set(b.dates)].sort();
+        const ex = await sb.from('events').select('id,event_date,kind').eq('team', b.team).eq('kind', 't').gte('event_date', dates[0]).lte('event_date', dates[dates.length - 1]);
+        if (ex.error) throw new Error(ex.error.message);
+        const byDate = {}; (ex.data || []).forEach(e => { if (!byDate[e.event_date]) byDate[e.event_date] = e.id; });
+        const missing = dates.filter(d => !byDate[d]);
+        if (missing.length) {
+          const ins = await sb.from('events').insert(missing.map(d => ({kind: 't', team: b.team, event_date: d, time: '16:00', place: '', meet: '', coach: '', opponent: ''}))).select();
+          if (ins.error) throw new Error(ins.error.message);
+          (ins.data || []).forEach(e => byDate[e.event_date] = e.id);
+        }
+        out.newEvents += missing.length; out.oldEvents += dates.length - missing.length;
+        const att = [], ca = [];
+        b.use.forEach((ci, k) => {
+          const evId = byDate[b.dates[k]]; if (!evId) return;
+          b.matched.forEach(p => { const v = p.vals[ci]; if (v != null) att.push({event_id: evId, player_id: p.m.id, state: v ? 'P' : 'N'}); });
+          b.coachRows.forEach(c => { const v = c.vals[ci]; if (v != null) ca.push({event_id: evId, coach_id: c.x.id, state: v ? 'y' : 'n'}); });
+        });
+        // duplicitní dvojice (stejné datum ve dvou sloupcích) – platí poslední
+        const dedupe = (L, k2) => { const m = new Map(); L.forEach(r => m.set(r.event_id + '|' + r[k2], r)); return [...m.values()]; };
+        const A = dedupe(att, 'player_id'), C = dedupe(ca, 'coach_id');
+        for (let k = 0; k < A.length; k += 150) {
+          const r = await sb.from('attendance').upsert(A.slice(k, k + 150), {onConflict: 'event_id,player_id'});
+          if (r.error) throw new Error(r.error.message);
+        }
+        for (let k = 0; k < C.length; k += 150) {
+          const r = await sb.from('coach_attendance').upsert(C.slice(k, k + 150), {onConflict: 'event_id,coach_id'});
+          if (r.error) throw new Error(r.error.message);
+        }
+        out.players += A.length; out.coaches += C.length;
+      }
+    } catch (e) { out.errors.push(String(e.message || e)); }
+    await Promise.all([Sync.loaders.events(), Sync.loaders.attendance(), Sync.loaders.coach()]);
+    i.running = false; i.done = out; App.render();
   }
 }
 

@@ -321,12 +321,23 @@ $$ begin update public.profiles set must_change_password = false where id = auth
 
 -- Jméno trenéra u jeho účasti (rodiče profily trenérů nevidí, příjmení se ukazuje u události)
 alter table public.coach_attendance add column if not exists coach_name text not null default '';
+alter table public.coach_attendance add column if not exists ev_kind text;      -- t trénink / z zápas (kvůli výpočtu docházky trenéra)
+alter table public.coach_attendance add column if not exists ev_date date;      -- datum události
 create or replace function public.catt_fill_name() returns trigger
 language plpgsql security definer set search_path = public as
-$$ begin new.coach_name := coalesce((select name from public.profiles where id = new.coach_id), ''); return new; end $$;
+$$ begin
+  new.coach_name := coalesce((select name from public.profiles where id = new.coach_id), '');
+  select kind, event_date into new.ev_kind, new.ev_date from public.events where id = new.event_id;
+  return new;
+end $$;
 drop trigger if exists catt_fill_name on public.coach_attendance;
 create trigger catt_fill_name before insert or update on public.coach_attendance for each row execute function public.catt_fill_name();
 update public.coach_attendance c set coach_name = coalesce(p.name, '') from public.profiles p where p.id = c.coach_id and c.coach_name = '';
+update public.coach_attendance c set ev_kind = e.kind, ev_date = e.event_date from public.events e where e.id = c.event_id and c.ev_date is null;
+
+-- Hřiště C je Loučka (dříve se vedlo zvlášť jako „L“ / „Loučka“)
+update public.plan set field = 'C' where field = 'L';
+update public.events set place = 'Hřiště C – Loučka' where place in ('Loučka', 'Hřiště C');
 
 -- Smazaný trénink z rozvrhu se nesmí hned znovu vytvořit: zapamatujeme si (rozvrh, datum), které se přeskakují
 create table if not exists public.events_skip (plan_id bigint not null, event_date date not null, primary key (plan_id, event_date));
@@ -351,7 +362,7 @@ $$ declare n int; begin
   insert into public.events (kind, team, event_date, time, place, meet, coach, opponent, cancelled, plan_id, created_by)
   select 't', p.team, week_start + p.day,
          lpad((p.start_min / 60)::text, 2, '0') || ':' || lpad((p.start_min % 60)::text, 2, '0'),
-         case p.field when 'Hala' then 'Hala' when 'L' then 'Loučka' when 'B' then 'Hřiště B – Umělka' else 'Hřiště ' || p.field end,
+         case p.field when 'Hala' then 'Hala' when 'B' then 'Hřiště B – Umělka' when 'C' then 'Hřiště C – Loučka' else 'Hřiště ' || p.field end,
          '15 min předem',
          coalesce((select pr.name from public.profiles pr where pr.role = 'c' and pr.team = p.team order by pr.created_at limit 1), ''),
          '', false, p.id, auth.uid()
@@ -748,7 +759,8 @@ create policy catt_select on public.coach_attendance for select to authenticated
   coach_id = auth.uid() or public.is_mgmt()
   or exists (select 1 from public.events e where e.id = event_id and public.can_see_team(e.team)));   -- rodiče a trenéři vidí, kdo z trenérů přijde
 create policy catt_write  on public.coach_attendance for all    to authenticated
-  using (coach_id = auth.uid() and public.app_role() in ('c','a')) with check (coach_id = auth.uid() and public.app_role() in ('c','a'));
+  using (public.is_mgmt() or (coach_id = auth.uid() and public.app_role() in ('c','a')))
+  with check (public.is_mgmt() or (coach_id = auth.uid() and public.app_role() in ('c','a')));
 
 create policy nom_select on public.nominations for select to authenticated using (public.can_see_player(player_id));
 create policy nom_write  on public.nominations for all    to authenticated using (public.can_edit_player(player_id)) with check (public.can_edit_player(player_id));
