@@ -319,6 +319,20 @@ create or replace function public.password_changed() returns void
 language plpgsql security definer set search_path = public as
 $$ begin update public.profiles set must_change_password = false where id = auth.uid(); end $$;
 
+-- Smazaný trénink z rozvrhu se nesmí hned znovu vytvořit: zapamatujeme si (rozvrh, datum), které se přeskakují
+create table if not exists public.events_skip (plan_id bigint not null, event_date date not null, primary key (plan_id, event_date));
+alter table public.events_skip enable row level security;
+create or replace function public.events_remember_delete() returns trigger
+language plpgsql security definer set search_path = public as
+$$ begin
+  if old.plan_id is not null and old.kind = 't' then
+    insert into public.events_skip(plan_id, event_date) values (old.plan_id, old.event_date) on conflict do nothing;
+  end if;
+  return old;
+end $$;
+drop trigger if exists events_remember_delete on public.events;
+create trigger events_remember_delete before delete on public.events for each row execute function public.events_remember_delete();
+
 -- Z rozvrhu hřišť vytvoří tréninky pro týden začínající week_start (pondělí): každý řádek rozvrhu = jeden trénink
 -- kategorie v daný den a čas. Je opakovatelná – existující tréninky nezdvojuje. Vrací počet nově vytvořených.
 create or replace function public.sync_plan_events(week_start date) returns int
@@ -334,6 +348,7 @@ $$ declare n int; begin
          '', false, p.id, auth.uid()
     from public.plan p
    where not exists (select 1 from public.events e where e.plan_id = p.id and e.event_date = week_start + p.day)
+     and not exists (select 1 from public.events_skip k where k.plan_id = p.id and k.event_date = week_start + p.day)
      and not exists (select 1 from public.events e where e.team = p.team and e.kind = 't' and e.event_date = week_start + p.day
                        and e.time = lpad((p.start_min / 60)::text, 2, '0') || ':' || lpad((p.start_min % 60)::text, 2, '0'))
   on conflict do nothing;
@@ -620,7 +635,7 @@ create policy players_insert on public.players for insert to authenticated
 create policy players_update on public.players for update to authenticated
   using (public.is_mgmt() or (public.app_role() = 'c' and team = public.app_team()))
   with check (public.is_mgmt() or (public.app_role() = 'c' and team = public.app_team()));
-create policy players_delete on public.players for delete to authenticated using (public.is_mgmt());
+create policy players_delete on public.players for delete to authenticated using (public.is_mgmt() or (public.app_role() = 'c' and team = public.app_team()));
 
 -- soukromá poznámka trenéra: jen trenér kategorie a vedení
 create policy pcoach_all on public.player_coach for all to authenticated

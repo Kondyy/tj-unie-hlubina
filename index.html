@@ -1148,7 +1148,7 @@ class Attendance {
         return `<div class="card ev ${t.x ? 'x' : 't'}" ${t.x ? '' : `style="cursor:pointer" onclick="Attendance.open('${t.id}')"`}>
           <div class="pay"><b>⚽ ${Util.date(t.d)} · ${t.t}</b><span class="pill ${t.x ? 'x' : k == count ? 'ok' : 'wa'}">${t.x ? 'Zrušeno' : k + '/' + count + ' označeno'}</span></div>
           <div class="mut">📍 ${esc(t.pl)}</div>${t.x ? '' : '<div class="mut">Klepnutím otevřete docházku →</div>'}
-          <div class="row" style="margin-top:8px"><button class="btn" onclick="event.stopPropagation();Events.cancel('${t.id}')">${t.x ? 'Obnovit trénink' : 'Zrušit trénink'}</button></div></div>`;
+          <div class="row" style="margin-top:8px"><button class="btn" onclick="event.stopPropagation();Events.cancel('${t.id}')">${t.x ? 'Obnovit trénink' : 'Zrušit trénink'}</button><button class="btn" style="flex:none;color:var(--r)" onclick="event.stopPropagation();Events.remove('${t.id}')">🗑 Smazat</button></div></div>`;
       }).join('') || '<div class="card mut">Tento týden zatím žádný trénink. Tréninky se přidají automaticky podle rozvrhu hřišť, který nastavuje vedení.</div>'}</div>
       <h2>+ Přidat trénink ručně</h2><div class="card">
         <div class="row"><select id="tr-day">${CONFIG.days.map((n, i) => `<option value="${i}">${Util.date(i)}</option>`).join('')}</select>
@@ -1208,7 +1208,7 @@ class Events {
       <div class="row" style="margin-top:8px">
         ${e.k == 'z' && !e.x ? `<button class="btn" onclick="Events.toggleNomination('${e.id}')">Nominace (${(DB.nominations[e.id] || []).length})</button>` : ''}
         ${e.k == 'z' && !e.x ? `<button class="btn" onclick="Events.toggleResult('${e.id}')">🏁 Výsledek</button>` : ''}
-        <button class="btn" onclick="Events.cancel(${e.id})">${e.x ? 'Obnovit' : 'Zrušit'}</button></div>
+        <button class="btn" onclick="Events.cancel(${e.id})">${e.x ? 'Obnovit' : 'Zrušit'}</button><button class="btn" style="flex:none;color:var(--r)" onclick="Events.remove(${e.id})">🗑 Smazat</button></div>
       ${e.x ? '' : Attendance.coachCard(e, true)}${UI.nomEvent == e.id ? Events.nominationBox(e) : ''}${UI.resEvent == e.id ? Events.resultBox(e) : ''}</div>`).join('')}</div>${Events.form()}`;
   }
 
@@ -1281,6 +1281,18 @@ class Events {
     Sync.write('Událost se nepodařilo upravit', sb.from('events').update({cancelled: !!e.x}).eq('id', id));
     if (e.x) Notifs.send('P', `❌ ${e.k == 'z' ? 'Zápas' : 'Trénink'} ${Util.date(e.d)} (${e.tm}) byl zrušen`, {team: e.tm, tab:'cal'});
   }
+  /** Smaže událost úplně (včetně docházky, nominací a odpovědí rodičů). Rodiče dostanou upozornění, byla-li ještě platná. */
+  static async remove(id) {
+    const e = Model.event(id); if (!e) return;
+    if (!confirm(`Smazat ${e.k == 'z' ? 'zápas vs. ' + e.o : 'trénink'} ${Util.date(e.d)} (${e.tm}) úplně? Smaže se i docházka a nominace. Nelze vrátit.`)) return;
+    const r = await Sync.write('Událost se nepodařilo smazat', sb.from('events').delete().eq('id', e.id).select());
+    if (!r) return;
+    if (!r.data || !r.data.length) return Sync.toast('Smazání nebylo povoleno.');
+    DB.events = DB.events.filter(x => x.id != e.id); delete DB.nominations[e.id]; delete DB.att[e.id]; delete DB.coachAtt[e.id];
+    if (UI.attEvent == e.id) UI.attEvent = 0;
+    if (!e.x) Notifs.send('P', `❌ ${e.k == 'z' ? 'Zápas' : 'Trénink'} ${Util.date(e.d)} (${e.tm}) byl zrušen`, {team: e.tm, tab:'cal'});
+    await Sync.loaders.players(); Sync.toast('✔ Smazáno.', true); App.render();
+  }
   /** Přidá novou událost týmu přihlášeného trenéra a upozorní rodiče. */
   static async add(k) {
     const u = UI.user, pf = k == 'z' ? 'ev' : 'tr', d = +$('#' + pf + '-day').value, place = $('#' + pf + '-place').value;
@@ -1348,6 +1360,7 @@ class Roster {
       <div class="row">${[[ap + ' %','Docházka', ap < CONFIG.lowAttendance ? 'cr' : 'cg'], [m.mp,'Odehrané zápasy',''], [m.gl,'Vstřelené góly','']]
         .map(([v, l, c]) => `<div class="card stat"><b class="${c}">${v}</b><span class="mut">${l}</span></div>`).join('')}</div>
       <div class="row" style="margin:8px 0 10px"><button class="chip" onclick="Roster.bump('${id}','mp')">+ odehraný zápas</button><button class="chip" onclick="Roster.bump('${id}','gl')">⚽ + gól</button></div>
+      <button class="chip" style="color:var(--r);margin-bottom:10px" onclick="Roster.remove('${id}')">🗑 Smazat hráče</button>
 
       <!-- platby hráče (jen ke čtení – upravuje vedení) -->
       <div class="card"><div class="pay"><b>💳 Platby</b><span class="pill ${Model.debt(m) ? 'no' : 'ok'}">${Model.debt(m) ? 'Dluh ' + Model.debt(m) + ' Kč' : 'Vše zaplaceno'}</span></div>
@@ -1392,6 +1405,16 @@ class Roster {
   // ----- akce (id = id hráče v databázi) -----
   static open(id)  { UI.player = id; App.render(); }
   static close()   { UI.player = ''; App.render(); }
+  /** Smaže hráče včetně docházky, plateb a vazeb na rodiče (rodičovské účty zůstanou). */
+  static async remove(id) {
+    const m = Model.byId(id); if (!m) return;
+    if (!confirm(`Smazat hráče ${m.full || m.n} (${m.t}) úplně? Smaže se i jeho docházka, platby a propojení na rodiče. Nelze vrátit.`)) return;
+    const r = await Sync.write('Hráče se nepodařilo smazat', sb.from('players').delete().eq('id', id).select());
+    if (!r) return;
+    if (!r.data || !r.data.length) return Sync.toast('Smazání nebylo povoleno.');
+    DB.members = DB.members.filter(x => x.id != id); UI.player = '';
+    await Sync.loaders.players(); await Sync.loaders.people(); Sync.toast('✔ Hráč smazán.', true); App.render();
+  }
   static toggleAdd(on) { UI.addPlayer = on; UI.playerMsg = ''; App.render(); }
   static bump(id, key) { Model.byId(id)[key]++; App.render(); Sync.savePlayer(id, true); }              // +1 zápas / +1 gól
   static set(id, key, val)    { Model.byId(id)[key] = val; Sync.savePlayer(id); }                       // textové pole (bez překreslení → neztratí se kurzor)
