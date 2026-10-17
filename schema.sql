@@ -319,6 +319,15 @@ create or replace function public.password_changed() returns void
 language plpgsql security definer set search_path = public as
 $$ begin update public.profiles set must_change_password = false where id = auth.uid(); end $$;
 
+-- Jméno trenéra u jeho účasti (rodiče profily trenérů nevidí, příjmení se ukazuje u události)
+alter table public.coach_attendance add column if not exists coach_name text not null default '';
+create or replace function public.catt_fill_name() returns trigger
+language plpgsql security definer set search_path = public as
+$$ begin new.coach_name := coalesce((select name from public.profiles where id = new.coach_id), ''); return new; end $$;
+drop trigger if exists catt_fill_name on public.coach_attendance;
+create trigger catt_fill_name before insert or update on public.coach_attendance for each row execute function public.catt_fill_name();
+update public.coach_attendance c set coach_name = coalesce(p.name, '') from public.profiles p where p.id = c.coach_id and c.coach_name = '';
+
 -- Smazaný trénink z rozvrhu se nesmí hned znovu vytvořit: zapamatujeme si (rozvrh, datum), které se přeskakují
 create table if not exists public.events_skip (plan_id bigint not null, event_date date not null, primary key (plan_id, event_date));
 alter table public.events_skip enable row level security;
@@ -669,7 +678,9 @@ create policy att_select on public.attendance for select to authenticated using 
 create policy att_insert on public.attendance for insert to authenticated with check (public.can_see_player(player_id));
 create policy att_update on public.attendance for update to authenticated using (public.can_see_player(player_id)) with check (public.can_see_player(player_id));
 
-create policy catt_select on public.coach_attendance for select to authenticated using (coach_id = auth.uid() or public.is_mgmt());
+create policy catt_select on public.coach_attendance for select to authenticated using (
+  coach_id = auth.uid() or public.is_mgmt()
+  or exists (select 1 from public.events e where e.id = event_id and public.can_see_team(e.team)));   -- rodiče a trenéři vidí, kdo z trenérů přijde
 create policy catt_write  on public.coach_attendance for all    to authenticated
   using (coach_id = auth.uid() and public.app_role() in ('c','a')) with check (coach_id = auth.uid() and public.app_role() in ('c','a'));
 

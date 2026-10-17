@@ -72,7 +72,7 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .col{max-width:640px;margin:0 auto}                 /* úzký sloupec pro seznamy */
 h2{font-size:16px;margin:16px 0 8px}
 .mut{color:var(--mut);font-size:13px}
-.cg{color:var(--g)} .cr{color:var(--r)}
+.cg{color:var(--g)} .cr{color:var(--r)} .cw{color:var(--y)}
 
 /* ---------- 2. HLAVIČKA A NAVIGACE ---------- */
 .hd{position:sticky;top:env(safe-area-inset-top,0px);z-index:30;background:rgba(10,13,20,.72);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid var(--bd)}
@@ -295,6 +295,7 @@ const DB = {
   users: {}, members: [], docs: {}, events: [], results: [], payItems: [], plan: [], messages: [],
   chats: {}, notifs: [], links: [], settings: {},
   att: {},          // docházka:        "idUdálosti|jménoHráče"  → 'P' | 'O' | 'N'
+  coachNm: {},      // příjmení trenéra u jeho účasti: "idTrenéra|idUdálosti" → 'Kondaš'
   coachAtt: {},     // účast trenéra:   "idTrenéra|idUdálosti"    → 'y' | 'n'
   nominations: {},  // nominace:        idZápasu → [jména hráčů]
   carpool: {},      // spolujízda:      "dítě|idUdálosti" → 'o1'..'o4' (nabízím) | 's' (hledám)
@@ -360,6 +361,8 @@ const UI = {
    ===================================================================== */
 class Util {
   /** Ochrana proti vložení HTML (vždy použít u textů zadaných uživatelem). */
+  /** Příjmení = poslední slovo jména ("Dominik Kondaš" → "Kondaš"). */
+  static surname(n) { const w = String(n || '').trim().split(/\s+/); return w[w.length - 1] || ''; }
   static esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
   /** Řetězec bezpečný do onclick='...' (apostrofy, uvozovky). */
   static q(s) { return Util.esc(String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")); }
@@ -424,6 +427,11 @@ class Model {
   static team(kid)       { const m = Model.member(kid); return m ? m.t : ''; }
   static membersOf(team) { return DB.members.filter(m => m.t == team); }
   static event(id)       { return DB.events.find(e => e.id == id); }
+  /** Příjmení trenérů, kteří potvrdili účast na události (bez potvrzení: příjmení určeného trenéra). */
+  static coachSurnames(e) {
+    const L = Object.keys(DB.coachAtt).filter(k => DB.coachAtt[k] == 'y' && k.slice(k.indexOf('|') + 1) == String(e.id)).map(k => DB.coachNm[k]).filter(Boolean);
+    return [...new Set(L)].sort((a, b) => a.localeCompare(b, 'cs')).join(', ') || Util.surname(e.c);
+  }
   static eventsOf(team)  { return DB.events.filter(e => e.tm == team).sort((a, b) => a.d - b.d); }
 
   /** Dluh člena v Kč (součet nezaplacených příspěvků). */
@@ -577,7 +585,7 @@ class Auth {
   static reset() {
     Sync.stop();
     Object.assign(DB, {users:{}, members:[], docs:{}, events:[], results:[], payItems:[], plan:[], messages:[], chats:{}, notifs:[], links:[], settings:{},
-                       att:{}, coachAtt:{}, nominations:{}, carpool:{}, responses:{}, notes:{}, seen:{}});
+                       att:{}, coachAtt:{}, coachNm:{}, nominations:{}, carpool:{}, responses:{}, notes:{}, seen:{}});
     UI.user = null; UI.asTeam = ''; UI.imp = null; UI.recovery = false; UI.more = false; UI.bell = false; UI.modal = null; UI.profile = false; UI.profMsg = ''; UI.pkSel = {}; UI.player = ''; UI.boot = false; UI.kid = ''; UI.editUser = '';
     UI.skipKeep = ['lg-pass', 'lg-email'];
     App.render();
@@ -720,7 +728,7 @@ class Sync {
     },
     coach: async () => {
       const rows = await Sync.fetchAll('coach_attendance', q => q.order('event_id').order('coach_id'));
-      DB.coachAtt = {}; rows.forEach(r => DB.coachAtt[r.coach_id + '|' + r.event_id] = r.state);
+      DB.coachAtt = {}; DB.coachNm = {}; rows.forEach(r => { const k = r.coach_id + '|' + r.event_id; DB.coachAtt[k] = r.state; DB.coachNm[k] = Util.surname(r.coach_name); });
     },
     noms: async () => {
       const rows = await Sync.fetchAll('nominations', q => q.order('event_id').order('player_id'));
@@ -769,7 +777,7 @@ class Sync {
   /** Která tabulka při změně znovu načte které části paměti. */
   static watch = {
     teams: ['teams'], settings: ['settings'], events: ['events'], results: ['results'], plan: ['plan'], nominations: ['noms'], club_messages: ['club'], notifications: ['notifs'],
-    players: ['players', 'people'], player_payments: ['players'], parent_players: ['people'], profiles: ['people']
+    coach_attendance: ['coach'], players: ['players', 'people'], player_payments: ['players'], parent_players: ['people'], profiles: ['people']
   };
 
   static subscribe() {
@@ -923,7 +931,7 @@ class Calendar {
     const k = UI.kid + '|' + e.id, r = DB.responses[k], cl = e.x ? 'x' : e.k;
     return `<div class="card ev ${cl}">
       <div class="pay"><b>${e.k == 'z' ? '🏆 Zápas vs. ' + e.o : '⚽ Trénink'}</b><span class="pill ${cl}">${e.x ? 'Zrušeno' : e.k == 'z' ? 'Zápas' : 'Trénink'}</span></div>
-      <div class="mut">🕒 ${Util.date(e.d)}, ${e.t} · 📍 ${e.pl}<br>🤝 Sraz: ${e.m} · 👤 ${e.c}</div>
+      <div class="mut">🕒 ${Util.date(e.d)}, ${e.t} · 📍 ${e.pl}<br>🤝 Sraz: ${e.m} · 👤 ${esc(Model.coachSurnames(e))}</div>
       ${e.x ? '' : `<div class="row" style="margin-top:10px">
           <button class="btn ${r && r.s == 'y' ? 'ok' : ''}" onclick="Calendar.attend('${Util.q(k)}')">✔ Zúčastní se</button>
           <button class="btn ${r && r.s == 'n' ? 'no' : ''}" onclick="Calendar.openExcuse('${Util.q(k)}')">✖ Omluvit se</button></div>
@@ -1193,7 +1201,8 @@ class Attendance {
     return `<div class="${inline ? '' : 'card'}" style="${inline ? 'margin-top:10px' : ''}">
       <div class="pay"><b>👤 Moje účast (trenér)</b>${v ? `<span class="pill ${v == 'y' ? 'ok' : 'no'}">${v == 'y' ? 'Přijdu' : 'Nemohu'}</span>` : ''}</div>
       <div class="row" style="margin-top:8px"><button class="btn ${v == 'y' ? 'ok' : ''}" onclick="Attendance.coachSet(${e.id},'y')">✔ Zúčastním se</button>
-      <button class="btn ${v == 'n' ? 'no' : ''}" onclick="Attendance.coachSet(${e.id},'n')">✖ Nemohu</button></div></div>`;
+      <button class="btn ${v == 'n' ? 'no' : ''}" onclick="Attendance.coachSet(${e.id},'n')">✖ Nemohu</button></div>
+      <div class="mut" style="margin-top:6px">Přijdou trenéři: <b>${esc(Model.coachSurnames(e) || '—')}</b></div></div>`;
   }
 
   // ----- akce -----
@@ -1205,7 +1214,7 @@ class Attendance {
   }
   static coachSet(id, v) {
     const e = Model.event(id);
-    DB.coachAtt[UI.user.id + '|' + id] = v;
+    DB.coachAtt[UI.user.id + '|' + id] = v; DB.coachNm[UI.user.id + '|' + id] = Util.surname(UI.user.name);
     Sync.write('Účast se nepodařilo uložit', sb.from('coach_attendance').upsert({event_id: +id, coach_id: UI.user.id, state: v}, {onConflict: 'event_id,coach_id'}));
     if (v == 'n') Notifs.send('V', `⚠ Trenér ${UI.user.name} se nezúčastní: ${e.k == 'z' ? 'zápas' : 'trénink'} ${Util.date(e.d)} (${e.tm})`);
     App.render();
@@ -2056,6 +2065,38 @@ class Admin {
 
 
 /* ---------------------------------------------------------------------
+   KidProfile – profil hráče pro RODIČE: základní údaje, statistiky, docházka a absence dítěte
+   --------------------------------------------------------------------- */
+class KidProfile {
+  static view() {
+    const m = Model.member(UI.kid);
+    if (!m) return '<div class="card mut">K vašemu účtu zatím není přiřazeno žádné dítě. Obraťte se na trenéra nebo vedení klubu.</div>';
+    const [ps, tt] = Model.attCount(m), pct = Model.attPct(m), st = DB.docs[m.n] || 'wait', doc = CONFIG.docStatus[st];
+    const ev = DB.events.filter(e => e.tm == m.t && !e.x), mine = e => DB.att[e.id + '|' + m.n];
+    const exc = ev.filter(e => mine(e) == 'O'), unx = ev.filter(e => mine(e) == 'N');
+    const absent = [...exc.map(e => [e, 'O']), ...unx.map(e => [e, 'N'])].sort((a, b) => a[0].d - b[0].d);
+    const row = (l, v) => `<div class="pl"><span class="mut">${l}</span><b>${v}</b></div>`;
+    return `<div class="col">
+      <div class="card" style="display:flex;gap:14px;align-items:center">${Util.avatar(m, 72)}
+        <div style="min-width:0"><b style="font-size:19px">${esc(m.full || m.n)}</b><div class="mut">Kategorie ${esc(m.t)}${m.no !== '' ? ' · dres č. ' + esc(m.no) : ''}</div></div></div>
+      <h2 style="margin:4px 0">📊 Statistiky</h2>
+      <div class="row">${[[pct + ' %', 'Docházka', pct < CONFIG.lowAttendance ? 'cr' : 'cg'], [m.mp, 'Odehrané zápasy', ''], [m.gl, 'Vstřelené góly', '']]
+        .map(([v, l, c]) => `<div class="card stat"><b class="${c}">${v}</b><span class="mut">${l}</span></div>`).join('')}</div>
+      <div class="card"><b>🧾 Základní údaje</b>
+        ${row('Jméno', esc(m.full || m.n))}${row('Kategorie', esc(m.t))}${row('Číslo dresu', m.no === '' ? '—' : esc(m.no))}${row('Ročník narození', m.by === '' ? '—' : esc(m.by))}
+        <div class="pl"><span class="mut">Zdravotní prohlídka</span><span class="pill ${doc[1]}">${doc[0]}</span></div></div>
+      <div class="card"><div class="pay"><b>🗓 Docházka na tréninky</b><span class="pill ${pct < CONFIG.lowAttendance ? 'no' : 'ok'}">${ps} z ${tt}</span></div>
+        <div class="row" style="margin-top:8px"><div class="card stat"><b class="cg">${ps}</b><span class="mut">Přítomen</span></div>
+          <div class="card stat"><b class="cw">${exc.length}</b><span class="mut">Omluven</span></div>
+          <div class="card stat"><b class="cr">${unx.length}</b><span class="mut">Neomluven</span></div></div>
+        ${absent.length ? `<div style="margin-top:10px"><b>Absence tento týden</b>${absent.map(([e, s]) => `<div class="pl"><span>${e.k == 'z' ? '🏆 Zápas' : '⚽ Trénink'} · ${Util.date(e.d)}</span><span class="pill ${s == 'O' ? 'wa' : 'no'}">${s == 'O' ? 'omluven' : 'neomluven'}</span></div>`).join('')}</div>`
+          : '<div class="mut" style="margin-top:8px">Tento týden žádná absence. 👍</div>'}
+        <div class="mut" style="margin-top:8px">Docházku značí trenér na tréninku. Procenta zahrnují i dřívější tréninky.</div></div></div>`;
+  }
+}
+
+
+/* ---------------------------------------------------------------------
    Push – instalace do telefonu (service worker) a push notifikace mimo aplikaci
    Zapíná se v „Můj profil“. Veřejný klíč VAPID se bere ze serveru (settings.vapid_public); není-li nastaven,
    push se nenabízí. Odběr zařízení se ukládá do push_subscriptions (každý jen svůj).
@@ -2280,6 +2321,7 @@ class Import {
 const TABS = {
   p: [ {id:'cal',  label:'📅 Přehled',              view:() => Calendar.view()},
        {id:'chat', label:'💬 Chat',                 view:() => Chat.view()},
+       {id:'kid',  label:'🧒 Hráč',                 view:() => KidProfile.view()},
        {id:'pay',  label:'💳 Dokumenty & platby',   view:() => Payments.parentView()} ],
   c: [ {id:'att',  label:'⚽ Tréninky',             view:() => Attendance.view()},
        {id:'ev',   label:'🏆 Zápasy',               view:() => Events.view()},
@@ -2366,10 +2408,11 @@ class App {
     const all = TABS[u.r], split = t => { const m = t.label.match(/^(\S+)\s+(.*)$/); return m ? [m[1], m[2]] : ['•', t.label]; };
     const short = {'Dokumenty & platby': 'Platby', 'Rozvrh hřiště': 'Rozvrh'};
     const bd = t => (t.id == 'chat' ? Util.badge(Model.unreadAll(u)) : '') + (u.r == 'p' && t.id == 'pay' && Model.member(UI.kid) && Model.debt(Model.member(UI.kid)) ? ' 🔴' : '');
-    const main = all.length > 5 ? all.slice(0, 4) : all, more = all.length > 5 ? all.slice(4) : [];
+    const pin = {p: ['cal', 'chat', 'kid']}[u.r];                       // rodič: dole Přehled, Chat, Hráč; Platby pod „Více“
+    const main = pin ? all.filter(t => pin.includes(t.id)) : all.length > 5 ? all.slice(0, 4) : all, more = all.filter(t => !main.includes(t));
     const btn = (t, cls) => { const [ic, tx] = split(t); return `<button class="${UI.tab == t.id ? 'on' : ''}" onclick="App.go('${t.id}')"><span class="ic">${ic}</span><span class="tx">${esc(short[tx] || tx)}</span>${bd(t)}</button>`; };
     const moreOn = more.some(t => UI.tab == t.id);
-    const bottom = `<nav class="bnav">${main.map(btn).join('')}${more.length ? `<button class="${moreOn || UI.more ? 'on' : ''}" onclick="App.toggleMore()"><span class="ic">☰</span><span class="tx">Více</span></button>` : ''}</nav>`
+    const bottom = `<nav class="bnav">${main.map(btn).join('')}${more.length ? `<button class="${moreOn || UI.more ? 'on' : ''}" onclick="App.toggleMore()"><span class="ic">☰</span><span class="tx">Více</span>${more.some(t => bd(t).includes('🔴')) ? '🔴' : ''}</button>` : ''}</nav>`
       + (UI.more && more.length ? `<div class="msheet" onclick="if(event.target==this)App.toggleMore()"><div class="mg">${more.map(btn).join('')}</div></div>` : '');
     return bottom + `<nav class="tabs">${TABS[u.r].map(t => `<button class="chip ${UI.tab == t.id ? 'on' : ''}" onclick="App.go('${t.id}')">${t.label}${t.id == 'chat' ? Util.badge(Model.unreadAll(u)) : ''}${u.r == 'p' && t.id == 'pay' && Model.member(UI.kid) && Model.debt(Model.member(UI.kid)) ? ' 🔴' : ''}</button>`).join('')}</nav>`;
   }
