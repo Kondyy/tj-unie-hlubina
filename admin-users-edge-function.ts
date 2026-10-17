@@ -1,7 +1,8 @@
 // =====================================================================
 //  Supabase Edge Function:  admin-users
 //  Zakládání, změna hesla/e-mailu a mazání uživatelských účtů.
-//  Vedení smí vše. Trenér smí JEN založit účet role Rodič a přiřadit mu děti ze své kategorie.
+//  Správce (role a) smí vše. Vedení (v) spravuje rodiče a trenéry. Trenér smí JEN založit účet role Rodič
+//  a přiřadit mu děti ze své kategorie.
 //
 //  PROČ EDGE FUNCTION: k vytvoření/smazání účtu je potřeba klíč service_role, který
 //  se NIKDY nesmí dostat do HTML aplikace. Klíč zná jen tato funkce (Supabase ho
@@ -34,7 +35,7 @@ Deno.serve(async (req) => {
   const { data: caller, error: authErr } = await admin.auth.getUser(token);
   if (authErr || !caller?.user) return json({ error: "Nejste přihlášeni." }, 401);
   const { data: me } = await admin.from("profiles").select("role,team").eq("id", caller.user.id).single();
-  const isMgmt = me?.role === "v", isCoach = me?.role === "c" && !!me?.team;
+  const isAdmin = me?.role === "a", isMgmt = me?.role === "v" || isAdmin, isCoach = me?.role === "c" && !!me?.team;
   if (!isMgmt && !isCoach) return json({ error: "Tuto akci smí provést jen vedení klubu nebo trenér." }, 403);
 
   let b: Record<string, any>;
@@ -48,13 +49,18 @@ Deno.serve(async (req) => {
   const role = String(b.role ?? "");
   const team = String(b.team ?? "").trim();
   const password = String(b.password ?? "");
+  const phone = String(b.phone ?? "").trim().slice(0, 40);
+  const ROLES = ["p", "c", "v", "a"];
+  // role vedení a správce smí zakládat, měnit a mazat jen správce
+  const needsAdmin = (r: string) => r === "v" || r === "a";
 
   // 2) akce
   if (b.action === "create") {
     if (!name) return json({ error: "Vyplňte jméno." }, 400);
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: "Neplatný e-mail." }, 400);
     if (password.length < 8) return json({ error: "Heslo musí mít aspoň 8 znaků." }, 400);
-    if (!["p", "c", "v"].includes(role)) return json({ error: "Neplatná role." }, 400);
+    if (!ROLES.includes(role)) return json({ error: "Neplatná role." }, 400);
+    if (needsAdmin(role) && !isAdmin) return json({ error: "Účty vedení a správce smí zakládat jen správce." }, 403);
     if (role === "c" && !team) return json({ error: "Trenér musí mít kategorii (např. U9)." }, 400);
 
     // děti: trenér smí přiřadit jen hráče své kategorie
@@ -73,11 +79,13 @@ Deno.serve(async (req) => {
       return json({ error: dup ? "Uživatel s tímto e-mailem už existuje." : (error?.message ?? "Účet se nepodařilo vytvořit.") }, 400);
     }
     // role a kategorii nastavuje výhradně tato funkce (trigger ve výchozím stavu zakládá rodiče)
-    const base = { id: data.user.id, email, name, role, team: role === "c" ? team : null };
+    const base = { id: data.user.id, email, name, role, team: role === "c" ? team : null, phone };
     let { error: pErr } = await admin.from("profiles").upsert({ ...base, must_change_password: true, created_by: caller.user.id });
     // databáze ještě nemá nové sloupce (nespuštěné aktualizované SQL) → zkusit bez nich, účet se nesmí ztratit
-    if (pErr && /must_change_password|created_by|schema cache/i.test(pErr.message))
-      ({ error: pErr } = await admin.from("profiles").upsert(base));
+    if (pErr && /must_change_password|created_by|phone|schema cache/i.test(pErr.message)) {
+      const { phone: _p, ...old } = base;
+      ({ error: pErr } = await admin.from("profiles").upsert(old));
+    }
     if (pErr) {
       await admin.auth.admin.deleteUser(data.user.id);       // vrátit zpět, ať nevznikne účet bez profilu
       return json({ error: pErr.message }, 400);
@@ -93,6 +101,8 @@ Deno.serve(async (req) => {
   if (b.action === "update") {
     const id = String(b.id ?? "");
     if (!id) return json({ error: "Chybí id uživatele." }, 400);
+    const { data: tgt } = await admin.from("profiles").select("role").eq("id", id).single();
+    if (!isAdmin && (needsAdmin(tgt?.role ?? "") || needsAdmin(role))) return json({ error: "Účty vedení a správce smí upravovat jen správce." }, 403);
     const patch: Record<string, unknown> = {};
     if (email) {
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: "Neplatný e-mail." }, 400);
@@ -112,8 +122,8 @@ Deno.serve(async (req) => {
     if (name) prof.name = name;
     const flagPw = !!password;                           // heslo nastavil admin → uživatel si ho musí změnit
     if (role) {
-      if (!["p", "c", "v"].includes(role)) return json({ error: "Neplatná role." }, 400);
-      if (id === caller.user.id && role !== "v") return json({ error: "Sami sobě nemůžete odebrat roli vedení." }, 400);
+      if (!ROLES.includes(role)) return json({ error: "Neplatná role." }, 400);
+      if (id === caller.user.id && role !== me?.role) return json({ error: "Sami sobě nemůžete změnit roli." }, 400);
       prof.role = role; prof.team = role === "c" ? team || null : null;
       if (role === "c" && !team) return json({ error: "Trenér musí mít kategorii." }, 400);
     }
@@ -129,6 +139,8 @@ Deno.serve(async (req) => {
     const id = String(b.id ?? "");
     if (!id) return json({ error: "Chybí id uživatele." }, 400);
     if (id === caller.user.id) return json({ error: "Sami sebe smazat nemůžete." }, 400);
+    const { data: tgt } = await admin.from("profiles").select("role").eq("id", id).single();
+    if (!isAdmin && needsAdmin(tgt?.role ?? "")) return json({ error: "Účty vedení a správce smí mazat jen správce." }, 403);
     const { error } = await admin.auth.admin.deleteUser(id);   // profil a vazby na děti se smažou kaskádně
     if (error) return json({ error: error.message }, 400);
     return json({ ok: true });

@@ -26,7 +26,7 @@ create table if not exists public.profiles (
   id         uuid primary key references auth.users(id) on delete cascade,
   email      text,
   name       text not null default '',
-  role       text not null default 'p' check (role in ('p','c','v')),
+  role       text not null default 'p' check (role in ('p','c','v','a')),
   team       text,                                   -- kategorie trenéra (U7, U9…)
   created_at timestamptz not null default now()
 );
@@ -235,7 +235,12 @@ $$ select team from public.profiles where id = auth.uid() $$;
 
 create or replace function public.is_mgmt() returns boolean
 language sql stable security definer set search_path = public as
-$$ select coalesce((select role = 'v' from public.profiles where id = auth.uid()), false) $$;
+$$ select coalesce((select role in ('v','a') from public.profiles where id = auth.uid()), false) $$;   -- vedení i správce
+
+-- Správce (role 'a') smí úplně vše, včetně práce za trenéra libovolné kategorie a správy účtů vedení
+create or replace function public.is_admin() returns boolean
+language sql stable security definer set search_path = public as
+$$ select coalesce((select role = 'a' from public.profiles where id = auth.uid()), false) $$;
 
 -- Má přihlášený rodič aspoň jedno dítě v kategorii?
 create or replace function public.parent_has_team(t text) returns boolean
@@ -255,6 +260,7 @@ create or replace function public.can_chat(t text) returns boolean
 language sql stable security definer set search_path = public as
 $$ select (public.app_role() = 'c' and public.app_team() = t)
        or (public.app_role() = 'c' and t = 'T-' || public.app_team())       -- interní chat trenérů kategorie (team = 'T-U9')
+       or public.is_admin()                                                  -- správce smí do všech chatů
        or (public.app_role() = 'p' and public.parent_has_team(t)) $$;
 
 -- Smí přihlášený uživatel vidět hráče?
@@ -276,7 +282,7 @@ language sql stable security definer set search_path = public as
 $$ select p_to = auth.uid()
        or p_aud = 'a'
        or (p_aud = 'T' and public.app_role() = 'c')
-       or (p_aud = 'V' and public.app_role() = 'v')
+       or (p_aud = 'V' and public.app_role() in ('v','a'))
        or (p_aud = 'C' and public.app_role() = 'c' and public.app_team() = p_team)
        or (p_aud = 'P' and public.app_role() = 'p' and public.parent_has_team(p_team))
        or (p_aud = 'K' and public.app_role() = 'p' and exists (
@@ -334,6 +340,108 @@ $$ declare n int; begin
   get diagnostics n = row_count;
   return n;
 end $$;
+
+-- ---------------------------------------------------------------------
+-- Doplňky (verze 3): správce, kategorie, souhlasy, variabilní symbol, nastavení, push
+-- ---------------------------------------------------------------------
+alter table public.profiles add column if not exists consent_at timestamptz;                       -- kdy uživatel potvrdil souhlas se zpracováním údajů
+alter table public.profiles add column if not exists photo_consent boolean not null default false; -- souhlas s focením dětí
+create sequence if not exists public.player_vs_seq start 1001;
+alter table public.players add column if not exists vs bigint;                                      -- variabilní symbol plateb hráče
+alter table public.players alter column vs set default nextval('public.player_vs_seq');
+update public.players set vs = nextval('public.player_vs_seq') where vs is null;
+create unique index if not exists players_vs_uq on public.players(vs);
+
+create table if not exists public.teams (            -- kategorie klubu (spravuje vedení)
+  name text primary key,
+  sort int not null default 0
+);
+insert into public.teams (name, sort) values ('U7', 7), ('U8', 8), ('U9', 9), ('U11', 11) on conflict do nothing;
+
+create table if not exists public.settings (         -- veřejná nastavení klubu (číslo účtu, VAPID veřejný klíč…)
+  key   text primary key,
+  value text not null default ''
+);
+
+create table if not exists public.app_config (       -- soukromá nastavení (jen databázové funkce): push_url, push_secret
+  key   text primary key,
+  value text not null default ''
+);
+
+create table if not exists public.push_subscriptions (
+  id         bigint generated always as identity primary key,
+  user_id    uuid not null references public.profiles(id) on delete cascade,
+  endpoint   text not null unique,
+  p256dh     text not null,
+  auth       text not null,
+  created_at timestamptz not null default now()
+);
+
+-- Pojistka: vedení nesmí měnit role vedení/správce ani povyšovat; to smí jen správce
+create or replace function public.profiles_guard() returns trigger
+language plpgsql security definer set search_path = public as
+$$ begin
+  if auth.uid() is not null and not public.is_admin() then
+    if new.role is distinct from old.role and (new.role in ('v','a') or old.role in ('v','a')) then
+      raise exception 'Role vedení a správce smí měnit jen správce.';
+    end if;
+    if old.role in ('v','a') and old.id <> auth.uid() then
+      raise exception 'Účty vedení a správce smí upravovat jen správce.';
+    end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists profiles_guard on public.profiles;
+create trigger profiles_guard before update on public.profiles
+  for each row execute function public.profiles_guard();
+
+-- Souhlas se zpracováním údajů (a volitelně s focením)
+create or replace function public.save_consent(p_photo boolean) returns void
+language plpgsql security definer set search_path = public as
+$$ begin
+  update public.profiles set consent_at = now(), photo_consent = coalesce(p_photo, false) where id = auth.uid();
+end $$;
+
+-- Veřejný VAPID klíč pro push notifikace
+create or replace function public.push_public_key() returns text
+language sql stable security definer set search_path = public as
+$$ select value from public.settings where key = 'vapid_public' $$;
+
+-- Komu patří notifikace (pro odeslání push): stejná pravidla jako notif_visible, jen počítaná za všechny uživatele
+create or replace function public.notif_recipients(n public.notifications) returns setof uuid
+language sql stable security definer set search_path = public as
+$$ select distinct u from (
+     select n.to_user as u where n.to_user is not null
+     union all select id from public.profiles where n.aud = 'a'
+     union all select id from public.profiles where n.aud = 'T' and role = 'c'
+     union all select id from public.profiles where n.aud = 'V' and role in ('v','a')
+     union all select id from public.profiles where n.aud = 'C' and role = 'c' and team = n.team
+     union all select pp.parent_id from public.parent_players pp join public.players pl on pl.id = pp.player_id
+               where n.aud = 'P' and pl.team = n.team
+     union all select pp.parent_id from public.parent_players pp join public.players pl on pl.id = pp.player_id
+               where n.aud = 'K' and pl.short_name = n.kid
+   ) x where u is not null and u is distinct from n.by_user $$;
+
+-- Po vložení notifikace odešle (pokud je nastavená) Edge Function send-push přes pg_net.
+-- Nastavení: viz README – app_config: push_url, push_secret. Chyba odeslání nikdy neblokuje vložení notifikace.
+create or replace function public.notifications_push() returns trigger
+language plpgsql security definer set search_path = public as
+$$ declare url text; sec text; ids uuid[]; begin
+  select value into url from public.app_config where key = 'push_url';
+  select value into sec from public.app_config where key = 'push_secret';
+  if coalesce(url, '') = '' then return new; end if;
+  select array_agg(x) into ids from public.notif_recipients(new) x;
+  if ids is null then return new; end if;
+  perform net.http_post(url := url,
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-push-secret', coalesce(sec, '')),
+    body := jsonb_build_object('user_ids', ids, 'text', new.text, 'tab', new.tab, 'sub', new.sub));
+  return new;
+exception when others then
+  return new;
+end $$;
+drop trigger if exists notifications_push on public.notifications;
+create trigger notifications_push after insert on public.notifications
+  for each row execute function public.notifications_push();
 
 -- Rodič nahraje zdravotní prohlídku → čeká na schválení
 create or replace function public.upload_doc(pid uuid) returns void
@@ -466,6 +574,8 @@ create trigger plan_before_delete before delete on public.plan
   for each row execute function public.plan_before_delete();
 
 -- Role "trenér" musí mít kategorii
+alter table public.profiles drop constraint if exists profiles_role_check;
+alter table public.profiles add constraint profiles_role_check check (role in ('p','c','v','a'));
 alter table public.profiles drop constraint if exists profiles_coach_team;
 alter table public.profiles add constraint profiles_coach_team check (role <> 'c' or team is not null);
 
@@ -476,7 +586,7 @@ alter table public.profiles add constraint profiles_coach_team check (role <> 'c
 do $$ declare t text; begin
   foreach t in array array['profiles','players','player_coach','parent_players','pay_items','player_payments',
     'events','results','attendance','coach_attendance','nominations','notes','plan','chat_messages',
-    'club_messages','notifications','notification_reads','read_state']
+    'club_messages','notifications','notification_reads','read_state','teams','settings','app_config','push_subscriptions']
   loop execute format('alter table public.%I enable row level security', t); end loop;
 end $$;
 
@@ -490,6 +600,13 @@ end $$;
 -- profiles: každý vidí sebe, vedení vidí a upravuje všechny (zakládání/mazání jen přes Edge Function)
 create policy profiles_select on public.profiles for select to authenticated using (id = auth.uid() or public.is_mgmt() or public.coach_sees_parent(id));
 create policy profiles_update on public.profiles for update to authenticated using (public.is_mgmt()) with check (public.is_mgmt());
+
+-- kategorie a nastavení: čtou všichni přihlášení, píše vedení; app_config nemá žádné pravidlo (čtou jen databázové funkce)
+create policy teams_select    on public.teams    for select to authenticated using (true);
+create policy teams_write     on public.teams    for all    to authenticated using (public.is_mgmt()) with check (public.is_mgmt());
+create policy settings_select on public.settings for select to authenticated using (true);
+create policy settings_write  on public.settings for all    to authenticated using (public.is_mgmt()) with check (public.is_mgmt());
+create policy push_own        on public.push_subscriptions for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 -- players
 -- Pozn.: podmínky jsou zapsané přímo nad sloupci řádku (ne přes funkci can_see_player), aby šel hráč
@@ -539,18 +656,18 @@ create policy att_update on public.attendance for update to authenticated using 
 
 create policy catt_select on public.coach_attendance for select to authenticated using (coach_id = auth.uid() or public.is_mgmt());
 create policy catt_write  on public.coach_attendance for all    to authenticated
-  using (coach_id = auth.uid() and public.app_role() = 'c') with check (coach_id = auth.uid() and public.app_role() = 'c');
+  using (coach_id = auth.uid() and public.app_role() in ('c','a')) with check (coach_id = auth.uid() and public.app_role() in ('c','a'));
 
 create policy nom_select on public.nominations for select to authenticated using (public.can_see_player(player_id));
 create policy nom_write  on public.nominations for all    to authenticated using (public.can_edit_player(player_id)) with check (public.can_edit_player(player_id));
 
 -- trenérský deník: jen trenér kategorie
 create policy notes_all on public.notes for all to authenticated
-  using (public.app_role() = 'c' and exists (select 1 from public.players pl where pl.id = player_id and pl.team = public.app_team()))
-  with check (public.app_role() = 'c' and exists (select 1 from public.players pl where pl.id = player_id and pl.team = public.app_team()));
+  using (public.is_admin() or (public.app_role() = 'c' and exists (select 1 from public.players pl where pl.id = player_id and pl.team = public.app_team())))
+  with check (public.is_admin() or (public.app_role() = 'c' and exists (select 1 from public.players pl where pl.id = player_id and pl.team = public.app_team())));
 
 -- plánovač (rozvrh hřišť): čtení vedení + trenéři, zápis vedení
-create policy plan_select on public.plan for select to authenticated using (public.app_role() in ('v','c'));
+create policy plan_select on public.plan for select to authenticated using (public.app_role() in ('v','a','c'));
 create policy plan_write  on public.plan for all    to authenticated using (public.is_mgmt()) with check (public.is_mgmt());
 
 -- chat: jen členové kategorie
@@ -584,6 +701,7 @@ grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
 revoke all on all tables in schema public from anon;
+revoke all on public.app_config from authenticated;
 revoke execute on all functions in schema public from public, anon;
 grant execute on all functions in schema public to authenticated;
 revoke execute on function public.handle_new_user(), public.sync_user_email() from public, anon, authenticated;
@@ -594,7 +712,7 @@ revoke execute on function public.handle_new_user(), public.sync_user_email() fr
 -- ---------------------------------------------------------------------
 do $$ declare t text; begin
   foreach t in array array['chat_messages','attendance','notifications','events','club_messages','plan',
-                           'nominations','player_payments','players','parent_players','profiles','results']
+                           'nominations','player_payments','players','parent_players','profiles','results','teams','settings']
   loop
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
