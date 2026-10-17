@@ -84,6 +84,22 @@ h2{font-size:16px;margin:16px 0 8px}
 .hd select{width:auto;max-width:150px;margin:0}
 .tabs{display:flex;gap:6px;overflow-x:auto;margin:4px 0 10px;padding-bottom:2px}
 .tabs .chip{white-space:nowrap}
+.bnav,.msheet{display:none}
+@media(max-width:759px){
+  .tabs{display:none}
+  body{padding-bottom:calc(74px + env(safe-area-inset-bottom))}
+  .bnav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:40;background:rgba(10,13,20,.94);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-top:1px solid var(--bd);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+  .bnav button{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:0;color:var(--mut);font:inherit;font-size:11px;padding:6px 2px;border-radius:12px;position:relative;cursor:pointer}
+  .bnav button .ic{font-size:22px;line-height:1}
+  .bnav button span.tx{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bnav button.on{color:var(--tx);background:linear-gradient(135deg,rgba(227,30,38,.35),rgba(36,82,161,.55))}
+  .bnav .bd{margin:0;position:absolute;top:0;right:22%;min-width:16px;height:16px;border-radius:8px;background:#e31e26;color:#fff;font-size:10px;line-height:16px;text-align:center;padding:0 4px}
+  .msheet{display:block;position:fixed;inset:0;z-index:39;background:rgba(0,0,0,.55)}
+  .msheet .mg{position:absolute;left:10px;right:10px;bottom:calc(74px + env(safe-area-inset-bottom));background:#121826;border:1px solid var(--bd);border-radius:18px;padding:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .msheet .mg button{display:flex;flex-direction:column;align-items:center;gap:4px;background:var(--gl);border:1px solid var(--bd);border-radius:14px;color:var(--tx);font:inherit;font-size:12px;padding:12px 4px;cursor:pointer}
+  .msheet .mg button.on{border-color:rgba(140,170,240,.7);background:linear-gradient(135deg,rgba(227,30,38,.35),rgba(36,82,161,.55))}
+  .msheet .mg .ic{font-size:24px}
+}
 .bd{background:var(--r);color:#fff;border-radius:99px;font:600 11px/1 system-ui;padding:2px 6px;margin-left:6px;font-style:normal}  /* odznak nepřečtených */
 .nt{padding:8px 4px;border-bottom:1px solid var(--bd);font-size:14px;cursor:pointer}
 .nt.un{border-left:3px solid var(--b);padding-left:8px}                           /* nepřečtená notifikace */
@@ -334,6 +350,7 @@ const UI = {
   admMsg: '', admOk: false,   // správa: výsledek poslední akce
   ovTeam: 'all', ovSearch: '',  // vedení: přehled docházky (filtr kategorie, hledání)
   imp: null,             // vedení: rozečtený import z Excelu
+  more: false,           // mobil: otevřená nabídka „Více“ ve spodní liště
   recovery: false        // po kliknutí na odkaz „zapomenuté heslo“ v e-mailu
 };
 
@@ -561,7 +578,7 @@ class Auth {
     Sync.stop();
     Object.assign(DB, {users:{}, members:[], docs:{}, events:[], results:[], payItems:[], plan:[], messages:[], chats:{}, notifs:[], links:[], settings:{},
                        att:{}, coachAtt:{}, nominations:{}, carpool:{}, responses:{}, notes:{}, seen:{}});
-    UI.user = null; UI.asTeam = ''; UI.imp = null; UI.recovery = false; UI.bell = false; UI.modal = null; UI.profile = false; UI.profMsg = ''; UI.pkSel = {}; UI.player = ''; UI.boot = false; UI.kid = ''; UI.editUser = '';
+    UI.user = null; UI.asTeam = ''; UI.imp = null; UI.recovery = false; UI.more = false; UI.bell = false; UI.modal = null; UI.profile = false; UI.profMsg = ''; UI.pkSel = {}; UI.player = ''; UI.boot = false; UI.kid = ''; UI.editUser = '';
     UI.skipKeep = ['lg-pass', 'lg-email'];
     App.render();
   }
@@ -2346,11 +2363,20 @@ class App {
 
   /** Lišta záložek s odznakem nepřečtených u chatu a červenou tečkou u dluhu. */
   static tabBar(u) {
-    return `<nav class="tabs">${TABS[u.r].map(t => `<button class="chip ${UI.tab == t.id ? 'on' : ''}" onclick="App.go('${t.id}')">${t.label}${t.id == 'chat' ? Util.badge(Model.unreadAll(u)) : ''}${u.r == 'p' && t.id == 'pay' && Model.member(UI.kid) && Model.debt(Model.member(UI.kid)) ? ' 🔴' : ''}</button>`).join('')}</nav>`;
+    const all = TABS[u.r], split = t => { const m = t.label.match(/^(\S+)\s+(.*)$/); return m ? [m[1], m[2]] : ['•', t.label]; };
+    const short = {'Dokumenty & platby': 'Platby', 'Rozvrh hřiště': 'Rozvrh'};
+    const bd = t => (t.id == 'chat' ? Util.badge(Model.unreadAll(u)) : '') + (u.r == 'p' && t.id == 'pay' && Model.member(UI.kid) && Model.debt(Model.member(UI.kid)) ? ' 🔴' : '');
+    const main = all.length > 5 ? all.slice(0, 4) : all, more = all.length > 5 ? all.slice(4) : [];
+    const btn = (t, cls) => { const [ic, tx] = split(t); return `<button class="${UI.tab == t.id ? 'on' : ''}" onclick="App.go('${t.id}')"><span class="ic">${ic}</span><span class="tx">${esc(short[tx] || tx)}</span>${bd(t)}</button>`; };
+    const moreOn = more.some(t => UI.tab == t.id);
+    const bottom = `<nav class="bnav">${main.map(btn).join('')}${more.length ? `<button class="${moreOn || UI.more ? 'on' : ''}" onclick="App.toggleMore()"><span class="ic">☰</span><span class="tx">Více</span></button>` : ''}</nav>`
+      + (UI.more && more.length ? `<div class="msheet" onclick="if(event.target==this)App.toggleMore()"><div class="mg">${more.map(btn).join('')}</div></div>` : '');
+    return bottom + `<nav class="tabs">${TABS[u.r].map(t => `<button class="chip ${UI.tab == t.id ? 'on' : ''}" onclick="App.go('${t.id}')">${t.label}${t.id == 'chat' ? Util.badge(Model.unreadAll(u)) : ''}${u.r == 'p' && t.id == 'pay' && Model.member(UI.kid) && Model.debt(Model.member(UI.kid)) ? ' 🔴' : ''}</button>`).join('')}</nav>`;
   }
 
   // ----- navigace -----
-  static go(tab)         { UI.tab = tab; UI.bell = false; App.render(); }
+  static go(tab)         { UI.tab = tab; UI.bell = false; UI.more = false; App.render(); }
+  static toggleMore()    { UI.more = !UI.more; App.render(); }
   static toggleBell()    { UI.bell = !UI.bell; App.render(); }
   /** Rodič přepne dítě → přepne se celý dashboard i chat. */
   /** Správce přepne kategorii, za kterou pracuje jako trenér. */
