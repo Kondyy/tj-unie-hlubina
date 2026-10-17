@@ -84,6 +84,7 @@ h2{font-size:16px;margin:16px 0 8px}
 .hd select{width:auto;max-width:150px;margin:0}
 .tabs{display:flex;gap:6px;overflow-x:auto;margin:4px 0 10px;padding-bottom:2px}
 .tabs .chip{white-space:nowrap}
+.kp>*{margin-bottom:12px!important}.kp>h2{margin-bottom:0!important}
 .bnav,.msheet{display:none}
 @media(max-width:759px){
   .tabs{display:none}
@@ -260,7 +261,7 @@ const CONFIG = {
   days: ['Po','Út','St','Čt','Pá','So','Ne'],
   account: '',                              // číslo účtu klubu pro platby (zobrazí se rodičům), např. '123456789/0800'
   lowAttendance: 75,                        // docházka pod tuto hodnotu (%) se zobrazí červeně
-  venues: ['Hřiště A','Hřiště B – Umělka','Hala'],                      // místa pro nové události
+  venues: ['Hřiště A','Hřiště B – Umělka','Hřiště C','Loučka','Hala'],                      // místa pro nové události
   roles: {p:'Rodič', c:'Trenér', v:'Vedení', a:'Správce'},                            // názvy rolí
   excuseReasons: ['Nemoc','Škola','Rodinné důvody'],                    // důvody omluvy
   noteTags: {g:'🟢 Pochvala', r:'🔴 Kázeň', y:'🟡 Zranění'},            // štítky trenérského deníku
@@ -269,7 +270,7 @@ const CONFIG = {
   msgTargets: {all:'📢 Všem členům', trainers:'🧢 Jen trenérům', user:'👤 Konkrétní osobě'}, // příjemci zpráv vedení
   msgBadges:  {all:['📢 Všem členům','z'], trainers:['🧢 Jen trenérům','wa'], user:['👤 Osobně vám','ok']},
   planner: { from: 900, to: 1140,                                      // časové okno plánovače v minutách (15:00–19:00)
-             fields: ['A','B','Hala'], teams: ['U7','U8','U9','U11'] },
+             fields: ['A','B','C','L','Hala'], teams: ['U7','U8','U9','U11'] },
   paidWords: /^(ano|a|1|x|✔|✓|zaplaceno|true|yes)$/i,                  // co v Excelu znamená "zaplaceno"
   priceInHeader: /[(\-–]\s*(\d[\d\s]*)\s*(kč|kc)?\s*\)?\s*$/i          // částka v záhlaví sloupce, např. "Dresy (600)"
 };
@@ -293,7 +294,7 @@ const CONFIG = {
    ===================================================================== */
 const DB = {
   users: {}, members: [], docs: {}, events: [], results: [], payItems: [], plan: [], messages: [],
-  chats: {}, notifs: [], links: [], settings: {},
+  chats: {}, notifs: [], links: [], settings: {}, dm: [], dmContacts: [],
   att: {},          // docházka:        "idUdálosti|jménoHráče"  → 'P' | 'O' | 'N'
   coachNm: {},      // příjmení trenéra u jeho účasti: "idTrenéra|idUdálosti" → 'Kondaš'
   coachAtt: {},     // účast trenéra:   "idTrenéra|idUdálosti"    → 'y' | 'n'
@@ -351,6 +352,7 @@ const UI = {
   admMsg: '', admOk: false,   // správa: výsledek poslední akce
   ovTeam: 'all', ovSearch: '',  // vedení: přehled docházky (filtr kategorie, hledání)
   imp: null,             // vedení: rozečtený import z Excelu
+  parSearch: '', dmWith: '', dmSearch: '',   // hledání rodičů; soukromé zprávy: otevřená konverzace, hledání osoby
   more: false,           // mobil: otevřená nabídka „Více“ ve spodní liště
   recovery: false        // po kliknutí na odkaz „zapomenuté heslo“ v e-mailu
 };
@@ -400,7 +402,7 @@ class Util {
   /** Červený odznak s počtem (nebo nic, když je 0). */
   static badge(n) { return n ? `<i class="bd">${n}</i>` : ''; }
   /** Název hřiště: 'A' → "Hřiště A", 'Hala' → "Hala". */
-  static venue(f) { return f == 'Hala' ? 'Hala' : 'Hřiště ' + f; }
+  static venue(f) { return f == 'Hala' ? 'Hala' : f == 'L' ? 'Loučka' : f == 'B' ? 'Hřiště B – Umělka' : 'Hřiště ' + f; }
   /** Stabilní odstín barvy podle textu (pro avatary). */
   static hue(s) { return [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 7); }
   /** Věk a ročník hráče: "9 let (ročník 2017)". */
@@ -455,7 +457,15 @@ class Model {
   }
   static unreadChat(u, team) { const s = DB.seen[team] || 0; return Model.chat(team).filter(m => m.id > s && m.fid != u.id).length; }
   static unreadInbox(u)      { const s = DB.seen.inbox || 0; return Model.inbox(u).filter(m => m.id > s).length; }
-  static unreadAll(u)        { return Model.teamsOf(u).reduce((s, t) => s + Model.unreadChat(u, t), 0) + (Model.coachLike(u) ? Model.unreadChat(u, 'T-' + u.team) : 0) + Model.unreadInbox(u); }
+  /** Konverzace soukromých zpráv: [{id, name, last, unread, msgs}] od nejnovější. */
+  static dmThreads(u) {
+    const by = {};
+    DB.dm.forEach(m => { const pid = m.fid == u.id ? m.tid : m.fid; (by[pid] = by[pid] || {id: pid, name: m.fid == u.id ? m.tn : m.fn, msgs: []}).msgs.push(m); });
+    return Object.values(by).map(t => { t.last = t.msgs[t.msgs.length - 1]; t.unread = t.msgs.filter(m => m.fid != u.id && m.id > (DB.seen['dm:' + t.id] || 0)).length; return t; })
+      .sort((a, b) => b.last.id - a.last.id);
+  }
+  static unreadDm(u)         { return Model.dmThreads(u).reduce((s, t) => s + t.unread, 0); }
+  static unreadAll(u)        { return Model.unreadDm(u) + Model.teamsOf(u).reduce((s, t) => s + Model.unreadChat(u, t), 0) + (Model.coachLike(u) ? Model.unreadChat(u, 'T-' + u.team) : 0) + Model.unreadInbox(u); }
 
   /** Docházka hráče v %: základ z minulosti + vše, co trenér označil v aplikaci. */
   /** [počet účastí, počet tréninků] hráče (historie + označené tréninky). */
@@ -501,6 +511,7 @@ class Notifs {
     if (n.tab && TABS[u.r].some(t => t.id == n.tab)) {
       UI.tab = n.tab;
       if (n.sub) UI.chatSub = n.sub;
+      if (n.sub == 'dm' && n.by) UI.dmWith = n.by;
       if (u.r == 'p') {
         if (n.team) { UI.chatTeam = n.team; const k = u.kids.find(k => Model.team(k) == n.team); if (k) UI.kid = k; }
         if (n.kid && u.kids.includes(n.kid)) { UI.kid = n.kid; UI.chatTeam = Model.team(n.kid); }
@@ -584,9 +595,9 @@ class Auth {
   /** Vyčistí paměť aplikace a vrátí přihlašovací obrazovku. */
   static reset() {
     Sync.stop();
-    Object.assign(DB, {users:{}, members:[], docs:{}, events:[], results:[], payItems:[], plan:[], messages:[], chats:{}, notifs:[], links:[], settings:{},
+    Object.assign(DB, {users:{}, members:[], docs:{}, events:[], results:[], payItems:[], plan:[], messages:[], chats:{}, notifs:[], links:[], settings:{}, dm:[], dmContacts:[],
                        att:{}, coachAtt:{}, coachNm:{}, nominations:{}, carpool:{}, responses:{}, notes:{}, seen:{}});
-    UI.user = null; UI.asTeam = ''; UI.imp = null; UI.recovery = false; UI.more = false; UI.bell = false; UI.modal = null; UI.profile = false; UI.profMsg = ''; UI.pkSel = {}; UI.player = ''; UI.boot = false; UI.kid = ''; UI.editUser = '';
+    UI.user = null; UI.asTeam = ''; UI.imp = null; UI.recovery = false; UI.more = false; UI.bell = false; UI.modal = null; UI.profile = false; UI.profMsg = ''; UI.pkSel = {}; UI.player = ''; UI.boot = false; UI.kid = ''; UI.editUser = ''; UI.dmWith = ''; UI.dmSearch = '';
     UI.skipKeep = ['lg-pass', 'lg-email'];
     App.render();
   }
@@ -745,6 +756,14 @@ class Sync {
       const rows = await Sync.last('chat_messages', 300);
       DB.chats = {}; rows.forEach(r => Model.chat(r.team).push(Sync.chatRow(r)));
     },
+    /** Soukromé zprávy a seznam lidí, kterým smí uživatel psát (když tabulka ještě není, zůstane prázdné). */
+    dm: async () => {
+      try {
+        const rows = await Sync.last('direct_messages', 500);
+        DB.dm = rows.map(r => ({id: r.id, fid: r.from_id, tid: r.to_id, fn: r.from_name, tn: r.to_name, x: r.body, t: Util.stamp(r.created_at)}));
+        const c = await sb.rpc('dm_contacts'); DB.dmContacts = Array.isArray(c.data) ? c.data : [];
+      } catch (e) { DB.dm = []; DB.dmContacts = []; }
+    },
     club: async () => {
       const rows = await Sync.last('club_messages', 300);
       DB.messages = rows.map(r => ({id: r.id, fid: r.sender_id, f: r.sender_name, role: r.sender_role, kind: r.kind, to: r.recipient_id, s: r.subject, x: r.body, t: Util.stamp(r.created_at)}));
@@ -777,7 +796,7 @@ class Sync {
   /** Která tabulka při změně znovu načte které části paměti. */
   static watch = {
     teams: ['teams'], settings: ['settings'], events: ['events'], results: ['results'], plan: ['plan'], nominations: ['noms'], club_messages: ['club'], notifications: ['notifs'],
-    coach_attendance: ['coach'], players: ['players', 'people'], player_payments: ['players'], parent_players: ['people'], profiles: ['people']
+    coach_attendance: ['coach'], direct_messages: ['dm'], players: ['players', 'people'], player_payments: ['players'], parent_players: ['people'], profiles: ['people']
   };
 
   static subscribe() {
@@ -1356,7 +1375,7 @@ class Roster {
         <div class="mut">Průměrná docházka ${avg} % · zdravotní poznámka u ${withHealth} hráčů</div></div>
       ${L.map(m => `<div class="card pcard" onclick="Roster.open('${m.id}')">${Util.avatar(m, 52)}
         <div class="pi"><b>${esc(m.full)}</b><div class="mut">#${m.no === '' ? '–' : m.no} · ${Util.age(m)}</div></div>
-        <div class="pr"><b class="${Model.attPct(m) < CONFIG.lowAttendance ? 'cr' : 'cg'}">${Model.attPct(m)} %</b>${m.al || m.lim ? '<span title="Zdravotní poznámka">🩹</span>' : ''}</div></div>`).join('')}
+        <div class="pr"><b class="${Model.attPct(m) < CONFIG.lowAttendance ? 'cr' : 'cg'}">${Model.attPct(m)} %</b><span class="mut" style="font-size:12px">${Model.attCount(m).join('/')}</span>${m.al || m.lim ? '<span title="Zdravotní poznámka">🩹</span>' : ''}</div></div>`).join('')}
       ${UI.addPlayer ? Roster.addForm() : `<button class="btn ok" style="width:100%" onclick="Roster.toggleAdd(true)">+ Přidat hráče</button>`}</div>`;
   }
 
@@ -1528,13 +1547,14 @@ class Chat {
   static view() {
     const u = UI.user, teams = Model.teamsOf(u);
     if (u.r == 'p' && !teams.includes(UI.chatTeam)) UI.chatTeam = Model.team(UI.kid);
-    const team = Model.coachLike(u) ? u.team : UI.chatTeam, sub = UI.chatSub == 'club' ? 'club' : UI.chatSub == 'coach' && Model.coachLike(u) ? 'coach' : 'team';
+    const team = Model.coachLike(u) ? u.team : UI.chatTeam, sub = UI.chatSub == 'club' ? 'club' : UI.chatSub == 'dm' ? 'dm' : UI.chatSub == 'coach' && Model.coachLike(u) ? 'coach' : 'team';
     const inboxUnread = Model.unreadInbox(u), ck = Model.coachLike(u) ? 'T-' + u.team : '';
     // obsah se vykreslí PŘED přepínačem, aby se zprávy označily jako přečtené
-    const content = sub == 'team' ? Chat.box(u, team) : sub == 'coach' ? Chat.box(u, ck) : Chat.inbox(u);
+    const content = sub == 'team' ? Chat.box(u, team) : sub == 'coach' ? Chat.box(u, ck) : sub == 'dm' ? Dm.view(u) : Chat.inbox(u);
     return `<div class="col"><div class="row" style="margin-bottom:10px">
       ${teams.map(t => `<button class="chip ${sub == 'team' && t == team ? 'on' : ''}" onclick="Chat.show('team','${t}')">💬 ${teams.length > 1 ? t : 'Chat ' + t}${Util.badge(sub == 'team' && t == team ? 0 : Model.unreadChat(u, t))}</button>`).join('')}
       ${Model.coachLike(u) ? `<button class="chip ${sub == 'coach' ? 'on' : ''}" onclick="Chat.show('coach')">🔒 Trenéři ${esc(u.team)}${Util.badge(sub == 'coach' ? 0 : Model.unreadChat(u, ck))}</button>` : ''}
+      <button class="chip ${sub == 'dm' ? 'on' : ''}" onclick="Chat.show('dm')">✉ Soukromé${Util.badge(Model.unreadDm(u))}</button>
       <button class="chip ${sub == 'club' ? 'on' : ''}" onclick="Chat.show('club')">📢 Od klubu${Util.badge(sub == 'club' ? 0 : inboxUnread)}</button></div>${content}</div>`;
   }
 
@@ -1571,6 +1591,58 @@ class Chat {
     if (!Model.chat(team).some(m => m.id == r.data.id)) Model.chat(team).push(Sync.chatRow(r.data));    // ostatním přijde přes Realtime
     UI.focusChat = true;
     App.render();
+  }
+}
+
+
+/* ---------------------------------------------------------------------
+   Dm – soukromé zprávy: trenér ↔ trenér, trenér ↔ rodiče své kategorie, rodič → trenéři kategorie dítěte
+   Oprávnění hlídá databáze (dm_can_send, dm_contacts); aplikace jen zobrazuje seznam povolených kontaktů.
+   --------------------------------------------------------------------- */
+class Dm {
+  static roleLabel(c) { return c.role == 'c' ? 'Trenér ' + (c.team || '') : c.role == 'p' ? 'Rodič' : c.role == 'a' ? 'Správce' : 'Vedení'; }
+
+  static view(u) {
+    if (UI.dmWith) return Dm.thread(u);
+    const q = Util.norm(UI.dmSearch || ''), threads = Model.dmThreads(u), used = new Set(threads.map(t => t.id));
+    const info = id => DB.dmContacts.find(c => c.id == id) || (DB.users[id] ? {role: DB.users[id].r, team: DB.users[id].team} : null);
+    const rows = threads.filter(t => !q || Util.norm(t.name).includes(q)).map(t => {
+      const c = info(t.id);
+      return `<div class="card" style="cursor:pointer" onclick="Dm.open('${t.id}')"><div class="pay"><b>${esc(t.name)}</b>${Util.badge(t.unread)}</div>
+        <div class="mut">${c ? esc(Dm.roleLabel(c)) + ' · ' : ''}${t.last.fid == u.id ? 'Vy: ' : ''}${esc(t.last.x.length > 60 ? t.last.x.slice(0, 60) + '…' : t.last.x)}</div></div>`;
+    });
+    const fresh = DB.dmContacts.filter(c => !used.has(c.id) && (!q || Util.norm(c.name).includes(q))).map(c =>
+      `<div class="card" style="cursor:pointer" onclick="Dm.open('${c.id}')"><div class="pay"><b>${esc(c.name)}</b><span class="pill z">Nová zpráva</span></div><div class="mut">${esc(Dm.roleLabel(c))}</div></div>`);
+    return `<div class="col"><div class="card"><b>✉ Soukromé zprávy</b>
+        <div class="mut">${u.r == 'p' ? 'Můžete napsat trenérům kategorie vašeho dítěte.' : u.r == 'c' ? 'Můžete psát ostatním trenérům i rodičům své kategorie.' : 'Můžete psát komukoli v klubu.'} Zprávu uvidí jen příjemce.</div>
+        <input id="dm-search" type="search" style="margin-top:8px" placeholder="🔍 Hledat podle jména…" value="${esc(UI.dmSearch || '')}" oninput="Dm.search(this.value)"></div>
+      ${rows.join('')}${fresh.length ? `<h2 style="margin:6px 0 0">${rows.length ? 'Další lidé' : 'Komu napsat'}</h2>` + fresh.join('') : ''}
+      ${rows.length || fresh.length ? '' : '<div class="card mut">Nikdo nenalezen.</div>'}</div>`;
+  }
+
+  static thread(u) {
+    const pid = UI.dmWith, t = Model.dmThreads(u).find(x => x.id == pid), c = DB.dmContacts.find(x => x.id == pid);
+    const name = t ? t.name : c ? c.name : '(neznámý)', msgs = t ? t.msgs : [];
+    if (t && t.last.id > (DB.seen['dm:' + pid] || 0)) Sync.setSeen('dm:' + pid, t.last.id);
+    DB.notifs.forEach(n => { if (n.sub == 'dm' && n.by == pid && Notifs.forUser(n, u)) Notifs.markRead(n, u); });
+    const canWrite = !!c || msgs.some(m => m.fid == pid);                 // psát smí jen povolený kontakt (nebo ten, kdo napsal jako první)
+    return `<div class="col"><div class="row"><button class="btn" style="flex:none" onclick="Dm.back()">← Zprávy</button><div class="card" style="flex:1;margin:0"><b>${esc(name)}</b>${c ? `<div class="mut">${esc(Dm.roleLabel(c))}</div>` : ''}</div></div>
+      <div class="card"><div class="chat" id="chat-box">${msgs.map(m => `<div class="bub ${m.fid == u.id ? 'me' : ''}"><div class="nm"><b>${esc(m.fid == u.id ? 'Vy' : m.fn)}</b></div>${esc(m.x)}<div class="tm">${esc(m.t)}</div></div>`).join('') || '<div class="mut">Zatím žádné zprávy. Napište první.</div>'}</div>
+        ${canWrite ? `<div class="cin"><input id="chat-input" autocomplete="off" placeholder="Napište zprávu…" onkeydown="if(event.key==='Enter')Dm.send()"><button class="btn ok" onclick="Dm.send()">Odeslat</button></div>` : '<div class="mut" style="margin-top:8px">Tomuto uživateli už nelze psát.</div>'}</div></div>`;
+  }
+
+  static open(id)  { UI.dmWith = id; UI.focusChat = true; App.render(); }
+  static back()    { UI.dmWith = ''; UI.dmSearch = ''; App.render(); }
+  static search(v) { UI.dmSearch = v; App.render(); const i = $('#dm-search'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
+
+  static async send() {
+    const u = UI.user, to = UI.dmWith, input = $('#chat-input'), text = input && input.value.trim();
+    if (!text || !to) return;
+    input.value = '';
+    const r = await Sync.write('Zprávu se nepodařilo odeslat', sb.from('direct_messages').insert({to_id: to, body: text}).select().single());
+    if (!r) { const i = $('#chat-input'); if (i) i.value = text; return; }
+    if (!DB.dm.some(m => m.id == r.data.id)) DB.dm.push({id: r.data.id, fid: u.id, tid: to, fn: r.data.from_name, tn: r.data.to_name, x: r.data.body, t: Util.stamp(r.data.created_at)});
+    UI.focusChat = true; App.render();
   }
 }
 
@@ -1636,7 +1708,7 @@ class Planner {
         <div class="tk">${hours.map(h => `<span>${h}:00</span>`).join('')}</div>`).join('')}
       ${ro ? `<div class="mut">Rozvrh hřišť nastavuje vedení klubu. ${mine ? 'Tréninky vaší kategorie ' + esc(mine) + ' jsou zvýrazněné červeně.' : ''} Z rezervací se automaticky vytvářejí tréninky v kalendáři.</div>` : `<div class="mut">Klepnutím na blok rezervaci zrušíte. Z rezervace vznikne trénink v kalendáři trenérů a rodičů.</div>
       <h2>Rezervovat</h2><div class="card">
-        <div class="row"><select id="pn-team">${P.teams.map(t => `<option>${t}</option>`).join('')}</select><select id="pn-field">${P.fields.map(f => `<option>${f}</option>`).join('')}</select></div>
+        <div class="row"><select id="pn-team">${P.teams.map(t => `<option>${t}</option>`).join('')}</select><select id="pn-field">${P.fields.map(f => `<option value="${f}">${Util.venue(f)}</option>`).join('')}</select></div>
         <div class="row"><label class="mut">Od<input id="pn-from" type="time" value="16:00" step="900"></label><label class="mut">Do<input id="pn-to" type="time" value="17:30" step="900"></label></div>
         <button class="btn ok" style="width:100%;margin-top:6px" onclick="Planner.book()">Rezervovat na ${Util.date(UI.day)}</button>
         ${UI.plannerMsg ? `<div class="warn">⚠ ${UI.plannerMsg}</div>` : ''}</div>`}`;
@@ -1659,7 +1731,7 @@ class Planner {
   /** Záloha: trénink z rezervace vytvoří aplikace sama (kdyby v databázi chyběla funkce sync_plan_events). */
   static async createTrainingDirect(team, d, s, field) {
     const time = Util.toTime(s).replace(/^(\d):/, '0$1:'), date = Util.iso(Util.dayDate(d));
-    const place = field == 'Hala' ? 'Hala' : field == 'B' ? 'Hřiště B – Umělka' : 'Hřiště ' + field;
+    const place = Util.venue(field);
     const coach = (Object.values(DB.users).find(x => x.r == 'c' && x.team == team) || {}).name || '';
     if (DB.events.some(e => e.tm == team && e.k == 't' && e.d == d && e.t == time)) return;
     await Sync.write('Trénink se nepodařilo vytvořit', sb.from('events').insert({kind: 't', team, event_date: date, time, place, meet: '15 min předem', coach, opponent: ''}));
@@ -1895,10 +1967,13 @@ class Parents {
   static kids() { return DB.members.filter(m => m.t == UI.user.team); }
   static msg(t, ok) { UI.parMsg = t; UI.parOk = !!ok; App.render(); }
   static toggle(id, on) { (UI.pkSel = UI.pkSel || {})[id] = on; }
+  static search(v) { UI.parSearch = v; App.render(); const i = $('#pa-search'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 
   static view() {
     const kids = Parents.kids(), sel = UI.pkSel || {};
-    const list = Object.values(DB.users).filter(x => x.r == 'p');
+    const q = Util.norm(UI.parSearch || ''), all = Object.values(DB.users).filter(x => x.r == 'p');
+    const kidsOf = x => DB.links.filter(l => l.parent_id == x.id).map(l => (Model.byId(l.player_id) || {}).full || '').join(' ');
+    const list = all.filter(x => !q || Util.norm(x.name + ' ' + x.email + ' ' + kidsOf(x) + ' ' + DB.links.filter(l => l.parent_id == x.id).map(l => (Model.byId(l.player_id) || {}).n || '').join(' ')).includes(q));
     return `<div class="col">
       <div class="card"><b>➕ Nový účet rodiče (${esc(UI.user.team)})</b>
         <div class="mut" style="margin-top:4px">Rodič se přihlásí e-mailem a počátečním heslem a po přihlášení si heslo sám změní.</div>
@@ -1909,8 +1984,9 @@ class Parents {
         <div style="max-height:200px;overflow:auto;margin-top:4px">${kids.map(m => `<label style="display:flex;gap:8px;align-items:center;padding:4px 0"><input type="checkbox" style="width:auto;margin:0" ${sel[m.id] ? 'checked' : ''} onchange="Parents.toggle('${m.id}',this.checked)"> ${esc(m.full || m.n)}</label>`).join('') || '<div class="mut">V soupisce zatím nejsou žádní hráči.</div>'}</div>
         <button class="btn ok" style="width:100%;margin-top:8px" onclick="Parents.create()">Vytvořit účet rodiče</button>
         ${UI.parMsg ? `<div class="mut ${UI.parOk ? 'cg' : 'cr'}" style="margin-top:6px">${esc(UI.parMsg)}</div>` : ''}</div>
-      <h2>Rodiče vaší kategorie (${list.length})</h2>
-      ${list.map(x => Parents.card(x, kids)).join('') || '<div class="card mut">Zatím žádní rodiče s účtem.</div>'}</div>`;
+      <h2>Rodiče vaší kategorie (${q ? list.length + ' z ' + all.length : all.length})</h2>
+      <input id="pa-search" type="search" placeholder="🔍 Hledat podle jména rodiče, dítěte nebo e-mailu…" value="${esc(UI.parSearch || '')}" oninput="Parents.search(this.value)">
+      ${list.map(x => Parents.card(x, kids)).join('') || `<div class="card mut">${q ? 'Nikdo nenalezen.' : 'Zatím žádní rodiče s účtem.'}</div>`}</div>`;
   }
 
   static card(x, kids) {
@@ -2076,7 +2152,7 @@ class KidProfile {
     const exc = ev.filter(e => mine(e) == 'O'), unx = ev.filter(e => mine(e) == 'N');
     const absent = [...exc.map(e => [e, 'O']), ...unx.map(e => [e, 'N'])].sort((a, b) => a[0].d - b[0].d);
     const row = (l, v) => `<div class="pl"><span class="mut">${l}</span><b>${v}</b></div>`;
-    return `<div class="col">
+    return `<div class="col kp">
       <div class="card" style="display:flex;gap:14px;align-items:center">${Util.avatar(m, 72)}
         <div style="min-width:0"><b style="font-size:19px">${esc(m.full || m.n)}</b><div class="mut">Kategorie ${esc(m.t)}${m.no !== '' ? ' · dres č. ' + esc(m.no) : ''}</div></div></div>
       <h2 style="margin:4px 0">📊 Statistiky</h2>

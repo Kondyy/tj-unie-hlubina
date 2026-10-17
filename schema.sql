@@ -351,7 +351,7 @@ $$ declare n int; begin
   insert into public.events (kind, team, event_date, time, place, meet, coach, opponent, cancelled, plan_id, created_by)
   select 't', p.team, week_start + p.day,
          lpad((p.start_min / 60)::text, 2, '0') || ':' || lpad((p.start_min % 60)::text, 2, '0'),
-         case p.field when 'Hala' then 'Hala' when 'B' then 'Hřiště B – Umělka' else 'Hřiště ' || p.field end,
+         case p.field when 'Hala' then 'Hala' when 'L' then 'Loučka' when 'B' then 'Hřiště B – Umělka' else 'Hřiště ' || p.field end,
          '15 min předem',
          coalesce((select pr.name from public.profiles pr where pr.role = 'c' and pr.team = p.team order by pr.created_at limit 1), ''),
          '', false, p.id, auth.uid()
@@ -552,6 +552,72 @@ drop trigger if exists chat_after_insert on public.chat_messages;
 create trigger chat_after_insert after insert on public.chat_messages
   for each row execute function public.chat_after_insert();
 
+-- ---------------------------------------------------------------------
+-- Soukromé zprávy (jeden na jednoho): trenér ↔ trenér, trenér ↔ rodiče své kategorie, vedení/správce ↔ kdokoli.
+-- Rodič smí psát jen trenérům kategorie svého dítěte (a odpovídat tomu, kdo mu napsal).
+-- ---------------------------------------------------------------------
+create table if not exists public.direct_messages (
+  id         bigint generated always as identity primary key,
+  from_id    uuid not null default auth.uid() references public.profiles(id) on delete cascade,
+  to_id      uuid not null references public.profiles(id) on delete cascade,
+  from_name  text not null default '',
+  to_name    text not null default '',
+  body       text not null check (length(btrim(body)) between 1 and 2000),
+  created_at timestamptz not null default now(),
+  check (from_id <> to_id)
+);
+create index if not exists direct_messages_to_idx   on public.direct_messages(to_id, id);
+create index if not exists direct_messages_from_idx on public.direct_messages(from_id, id);
+
+-- Má rodič p dítě v kategorii team?
+create or replace function public.parent_in_team(p uuid, t text) returns boolean
+language sql stable security definer set search_path = public as
+$$ select exists (select 1 from public.parent_players pp join public.players pl on pl.id = pp.player_id where pp.parent_id = p and pl.team = t) $$;
+
+-- Smí uživatel a poslat zprávu uživateli b?
+create or replace function public.dm_can_send(a uuid, b uuid) returns boolean
+language sql stable security definer set search_path = public as
+$$ select a is distinct from b and exists (
+     select 1 from public.profiles pa, public.profiles pb where pa.id = a and pb.id = b and (
+          (pa.role <> 'p' and pb.role <> 'p')                                                      -- trenéři, vedení, správci mezi sebou
+       or (pa.role in ('v','a') and pb.role = 'p')                                                  -- vedení/správce rodičům
+       or (pa.role = 'c' and pb.role = 'p' and public.parent_in_team(b, pa.team))                   -- trenér rodičům své kategorie
+       or (pa.role = 'p' and pb.role = 'c' and public.parent_in_team(a, pb.team))                   -- rodič trenérům kategorie svého dítěte
+       or (pa.role = 'p' and exists (select 1 from public.direct_messages d where d.from_id = b and d.to_id = a))   -- odpověď tomu, kdo rodiči napsal
+     )) $$;
+
+-- Komu může přihlášený uživatel nově napsat (seznam kontaktů)
+create or replace function public.dm_contacts() returns table (id uuid, name text, role text, team text)
+language sql stable security definer set search_path = public as
+$$ select p.id, p.name, p.role, p.team from public.profiles p
+    where p.id <> auth.uid()
+      and ( (public.app_role() in ('v','a'))
+         or (public.app_role() = 'c' and (p.role <> 'p' or public.parent_in_team(p.id, public.app_team())))
+         or (public.app_role() = 'p' and p.role = 'c' and public.parent_in_team(auth.uid(), p.team)) )
+    order by p.role, p.name $$;
+
+create or replace function public.dm_before_insert() returns trigger
+language plpgsql security definer set search_path = public as
+$$ declare a public.profiles; b public.profiles; begin
+  select * into a from public.profiles where id = auth.uid();
+  select * into b from public.profiles where id = new.to_id;
+  new.from_id := auth.uid(); new.from_name := a.name; new.to_name := b.name;
+  return new;
+end $$;
+drop trigger if exists dm_before_insert on public.direct_messages;
+create trigger dm_before_insert before insert on public.direct_messages for each row execute function public.dm_before_insert();
+
+-- Upozornění příjemci (zvonek + push)
+create or replace function public.dm_after_insert() returns trigger
+language plpgsql security definer set search_path = public as
+$$ begin
+  insert into public.notifications (aud, to_user, text, tab, sub, cnt, by_user)
+  values ('U', new.to_id, '✉ ' || new.from_name || ': ' || left(new.body, 80) || case when length(new.body) > 80 then '…' else '' end, 'chat', 'dm', 1, new.from_id);
+  return new;
+end $$;
+drop trigger if exists dm_after_insert on public.direct_messages;
+create trigger dm_after_insert after insert on public.direct_messages for each row execute function public.dm_after_insert();
+
 -- Zprávy vedení: odesílatele doplní databáze
 create or replace function public.club_before_insert() returns trigger
 language plpgsql security definer set search_path = public as
@@ -610,7 +676,7 @@ alter table public.profiles add constraint profiles_coach_team check (role <> 'c
 do $$ declare t text; begin
   foreach t in array array['profiles','players','player_coach','parent_players','pay_items','player_payments',
     'events','results','attendance','coach_attendance','nominations','notes','plan','chat_messages',
-    'club_messages','notifications','notification_reads','read_state','teams','settings','app_config','push_subscriptions']
+    'club_messages','notifications','notification_reads','read_state','teams','settings','app_config','push_subscriptions','direct_messages']
   loop execute format('alter table public.%I enable row level security', t); end loop;
 end $$;
 
@@ -708,6 +774,9 @@ create policy club_select on public.club_messages for select to authenticated us
 create policy club_insert on public.club_messages for insert to authenticated with check (public.is_mgmt());
 
 -- notifikace
+create policy dm_select on public.direct_messages for select to authenticated using (from_id = auth.uid() or to_id = auth.uid());
+create policy dm_insert on public.direct_messages for insert to authenticated with check (from_id = auth.uid() and public.dm_can_send(auth.uid(), to_id));
+
 create policy notif_select on public.notifications for select to authenticated using (public.notif_visible(aud, to_user, team, kid));
 create policy notif_insert on public.notifications for insert to authenticated with check (
   by_user = auth.uid() and (
@@ -738,7 +807,7 @@ revoke execute on function public.handle_new_user(), public.sync_user_email() fr
 -- ---------------------------------------------------------------------
 do $$ declare t text; begin
   foreach t in array array['chat_messages','attendance','notifications','events','club_messages','plan',
-                           'nominations','player_payments','players','parent_players','profiles','results','teams','settings']
+                           'nominations','player_payments','players','parent_players','profiles','results','teams','settings','direct_messages','coach_attendance']
   loop
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
