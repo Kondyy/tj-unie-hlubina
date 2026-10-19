@@ -2539,7 +2539,7 @@ class AttImport {
         const att = [], ca = [];
         b.use.forEach((ci, k) => {
           const evId = byDate[b.dates[k]]; if (!evId) return;
-          b.matched.forEach(p => { const v = p.vals[ci]; if (v != null) att.push({event_id: evId, player_id: p.m.id, state: v ? 'P' : 'N'}); });
+          b.matched.forEach(p => { const v = p.vals[ci]; if (v != null) att.push({event_id: evId, player_id: p.m.id, state: v ? 'P' : 'O'}); });
           b.coachRows.forEach(c => { const v = c.vals[ci]; if (v != null) ca.push({event_id: evId, coach_id: c.x.id, state: v ? 'y' : 'n'}); });
         });
         // duplicitní dvojice (stejné datum ve dvou sloupcích) – platí poslední
