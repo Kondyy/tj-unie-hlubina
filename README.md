@@ -44,7 +44,10 @@ on conflict (key) do update set value = excluded.value;
 5. Každý uživatel si upozornění zapne v **Můj profil → Zapnout upozornění**. Na iPhonu nejdřív *Sdílet → Přidat na plochu* (iOS 16.4+).
 
 ## Import hráčů a rodičů (Vedení / Správce)
-Záložka **Správa → Import**: stáhnout šablonu, vyplnit (Hráč, Kategorie, Číslo dresu, Ročník, Rodič, E-mail rodiče, Telefon rodiče, Heslo), nahrát, zkontrolovat náhled, spustit. Po importu stáhnout Excel s přístupy a předat rodičům – při prvním přihlášení si změní heslo a potvrdí souhlas s GDPR.
+Záložka **Správa** má dva oddělené importy, každý s vlastní předlohou ke stažení:
+1. **Import hráčů** – Jméno hráče, Kategorie, Číslo dresu, Ročník. Hráč, který už v kategorii je, se přeskočí.
+2. **Import rodičů** – Rodič, E-mail, Telefon, Heslo (nepovinné), Jméno hráče (dítě), Kategorie. Dítě už musí být v soupisce, proto se nejdřív importují hráči. Předloha rodičů už obsahuje soupisku, stačí doplnit rodiče; sourozenci = více řádků se stejným e-mailem.
+Po importu rodičů stáhnout Excel s přístupy a předat rodičům – při prvním přihlášení si změní heslo a potvrdí souhlas s GDPR.
 
 ## Nastavení, import docházky a vymazání dat
 - Záložka **Nastavení** (všechny role): zapnutí upozornění v telefonu a výběr, co má chodit (chat, soukromé zprávy, zprávy vedení, tréninky a zápasy, platby), export statistik do Excelu a – pro trenéry a vedení – import docházky: stáhnete předlohu (Jméno hráče | Ročník | Celková účast | Počet tréninků), doplníte a nahrajete; podporovaná je i původní klubová tabulka s daty a hodnotami 1/0.

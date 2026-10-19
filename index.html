@@ -2193,7 +2193,8 @@ class Admin {
       <div class="card"><b>💳 Číslo účtu pro platby</b>
         <div class="mut">Zobrazí se rodičům a použije se pro QR platbu (např. 123456789/0800 nebo 19-123456789/0100).</div>
         <div class="row" style="margin-top:6px"><input id="ad-acc" value="${esc(CONFIG.account)}" placeholder="123456789/0800" autocomplete="off"><button class="btn ok" style="flex:none" onclick="Admin.saveAccount()">Uložit</button></div></div>
-      ${Import.view()}
+      ${Import.view('players')}
+      ${Import.view('parents')}
       <div class="card"><b>💾 Záloha dat</b>
         <div class="mut">Stáhne Excel se všemi daty klubu (hráči, účty bez hesel, platby, události, výsledky, docházka, rozvrh). Doporučujeme stahovat pravidelně, např. jednou měsíčně. V Supabase si navíc zapněte automatické zálohy databáze.</div>
         <button class="btn" style="width:100%;margin-top:8px" onclick="Admin.backup()">⬇ Stáhnout zálohu</button></div>
@@ -2668,46 +2669,50 @@ class Push {
 
 
 /* ---------------------------------------------------------------------
-   Import – hromadný import hráčů a rodičů z Excelu (VEDENÍ / SPRÁVCE)
-   Sloupce: Hráč, Kategorie, Číslo dresu, Ročník, Rodič, E-mail rodiče, Telefon rodiče, Heslo (volitelné).
-   Hráč se založí, pokud v dané kategorii ještě není. Rodič s e-mailem dostane účet (heslo se vygeneruje,
-   není-li uvedeno) a přiřadí se mu dítě; existující účet se jen propojí s dítětem.
+   Import – hromadný import z Excelu (VEDENÍ / SPRÁVCE), dva oddělené importy s vlastní předlohou:
+   1) HRÁČI:  Jméno hráče | Kategorie | Číslo dresu | Ročník   (hráč, který už v kategorii je, se přeskočí)
+   2) RODIČE: Rodič | E-mail | Telefon | Heslo | Jméno hráče (dítě) | Kategorie   (dítě už musí být v soupisce)
+      Rodič s e-mailem dostane účet (heslo se vygeneruje, není-li uvedeno) a přiřadí se mu dítě; existující účet se jen propojí.
+      Sourozenci: jeden řádek na každé dítě se stejným e-mailem.
    --------------------------------------------------------------------- */
 class Import {
   static COLS = {
-    player: ['hrac', 'jmeno hrace', 'dite', 'jmeno ditete', 'jmeno a prijmeni hrace', 'hrac jmeno', 'jmeno a prijmeni'],
+    player: ['jmeno hrace', 'hrac', 'dite', 'jmeno ditete', 'jmeno a prijmeni hrace', 'hrac jmeno', 'jmeno a prijmeni', 'jmeno hrace (dite)', 'dite (jmeno hrace)'],
     team:   ['tym', 'kategorie'],
     no:     ['cislo', 'cislo dresu', 'dres'],
     year:   ['rocnik', 'rok narozeni'],
     pname:  ['rodic', 'jmeno rodice', 'rodic jmeno', 'zakonny zastupce'],
-    email:  ['e-mail rodice', 'email rodice', 'rodic e-mail', 'rodic email', 'e-mail', 'email'],
-    phone:  ['telefon rodice', 'rodic telefon', 'telefon', 'tel', 'mobil'],
+    email:  ['e-mail', 'email', 'e-mail rodice', 'email rodice', 'rodic e-mail', 'rodic email'],
+    phone:  ['telefon', 'telefon rodice', 'rodic telefon', 'tel', 'mobil'],
     pass:   ['heslo', 'pocatecni heslo', 'heslo (volitelne)']
   };
   static MAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-  static view() {
-    const i = UI.imp;
-    return `<div class="card"><b>📥 Import hráčů a rodičů z Excelu</b>
-      <div class="mut">Sloupce: <b>Hráč, Kategorie, Číslo dresu, Ročník, Rodič, E-mail rodiče, Telefon rodiče, Heslo</b> (poslední čtyři jsou volitelné). Rodič s e-mailem dostane přihlašovací účet; sourozenci se stejným e-mailem se přiřadí k jednomu účtu.</div>
-      <div class="row" style="margin-top:8px"><button class="btn" onclick="Import.template()">⬇ Stáhnout šablonu</button>
-        <label class="btn" style="cursor:pointer;text-align:center">📂 Vybrat soubor<input type="file" accept=".xlsx,.xls,.csv" hidden onchange="Import.read(this)"></label></div>
+  static view(kind) {
+    const i = UI.imp && UI.imp.kind == kind ? UI.imp : null, P = kind == 'players';
+    return `<div class="card"><b>${P ? '📥 Import hráčů z Excelu' : '👪 Import rodičů z Excelu'}</b>
+      <div class="mut">${P
+        ? 'Sloupce: <b>Jméno hráče, Kategorie, Číslo dresu, Ročník</b> (poslední dva jsou volitelné). Hráč, který už v kategorii je, se přeskočí.'
+        : 'Sloupce: <b>Rodič, E-mail, Telefon, Heslo, Jméno hráče (dítě), Kategorie</b> (telefon a heslo jsou volitelné). Dítě už musí být v soupisce – nejdřív naimportujte hráče. Rodič s e-mailem dostane přihlašovací účet; u sourozenců dejte každé dítě na samostatný řádek se stejným e-mailem. Předloha už obsahuje vaši soupisku – stačí doplnit rodiče.'}</div>
+      <div class="row" style="margin-top:8px"><button class="btn" onclick="Import.template('${kind}')">⬇ Stáhnout předlohu</button>
+        <label class="btn" style="cursor:pointer;text-align:center">📂 Vybrat soubor<input type="file" accept=".xlsx,.xls,.csv" hidden onchange="Import.read(this,'${kind}')"></label></div>
       ${i && !i.done ? Import.preview(i) : ''}${i && i.done ? Import.report(i) : ''}</div>`;
   }
 
   static preview(i) {
+    const P = i.kind == 'players';
     return `<div style="margin-top:10px;border-top:1px solid var(--bd);padding-top:8px">
-      <div><b>${i.rows.length}</b> řádků k importu · nových hráčů: <b>${i.newPlayers}</b> · nových účtů rodičů: <b>${i.newAccounts}</b></div>
+      <div><b>${i.rows.length}</b> řádků k importu · ${P ? `nových hráčů: <b>${i.newPlayers}</b> · už existují: <b>${i.existing}</b>` : `nových účtů rodičů: <b>${i.newAccounts}</b> · propojení s existujícím účtem: <b>${i.rows.length - i.newAccounts}</b>`}</div>
       ${i.errors.length ? `<div class="warn" style="margin-top:6px">⚠ Přeskočené řádky (${i.errors.length}):<br>${i.errors.slice(0, 12).map(esc).join('<br>')}${i.errors.length > 12 ? '<br>…' : ''}</div>` : ''}
       <div class="row" style="margin-top:8px"><button class="btn" onclick="Import.cancel()">Zrušit</button>
         <button class="btn ok" ${i.rows.length && !i.running ? '' : 'disabled'} onclick="Import.run()">${i.running ? 'Importuji… ' + i.progress : 'Provést import'}</button></div></div>`;
   }
 
   static report(i) {
-    const d = i.done;
+    const d = i.done, P = i.kind == 'players';
     return `<div style="margin-top:10px;border-top:1px solid var(--bd);padding-top:8px">
       <div class="cg"><b>✔ Import dokončen</b></div>
-      <div>Nových hráčů: <b>${d.newPlayers}</b> · nových účtů rodičů: <b>${d.accounts}</b> · propojeno s existujícím účtem: <b>${d.linked}</b></div>
+      <div>${P ? `Nových hráčů: <b>${d.newPlayers}</b> · přeskočeno (už existují): <b>${d.skipped}</b>` : `Nových účtů rodičů: <b>${d.accounts}</b> · propojeno s existujícím účtem: <b>${d.linked}</b>`}</div>
       ${d.errors.length ? `<div class="warn" style="margin-top:6px">⚠ Chyby (${d.errors.length}):<br>${d.errors.slice(0, 12).map(esc).join('<br>')}</div>` : ''}
       ${d.creds.length ? `<div class="mut" style="margin-top:8px">Přístupové údaje nových účtů vidíte jen teď – stáhněte je a předejte rodičům. Po prvním přihlášení si rodič heslo změní.</div>
         <button class="btn ok" style="width:100%;margin-top:6px" onclick="Import.creds()">⬇ Stáhnout přístupy (Excel)</button>` : ''}
@@ -2716,13 +2721,25 @@ class Import {
 
   static cancel() { UI.imp = null; App.render(); }
 
-  static template() {
+  /** Předloha k vyplnění: hráči – ukázkový řádek; rodiče – soupiska s prázdnými sloupci pro rodiče. List „Návod“ vysvětluje sloupce. */
+  static template(kind) {
     if (!window.XLSX) return alert('Knihovnu pro Excel se nepodařilo načíst.');
-    const rows = [
-      {'Hráč': 'Adam Novák', 'Kategorie': 'U9', 'Číslo dresu': 7, 'Ročník': 2017, 'Rodič': 'Petr Novák', 'E-mail rodiče': 'petr@email.cz', 'Telefon rodiče': '+420 777 111 222', 'Heslo': ''},
-      {'Hráč': 'Marek Novák', 'Kategorie': 'U7', 'Číslo dresu': 10, 'Ročník': 2019, 'Rodič': 'Petr Novák', 'E-mail rodiče': 'petr@email.cz', 'Telefon rodiče': '+420 777 111 222', 'Heslo': ''}];
-    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Import');
-    XLSX.writeFile(wb, 'import-hracu-sablona.xlsx');
+    const P = kind == 'players', wb = XLSX.utils.book_new();
+    const head = P ? ['Jméno hráče', 'Kategorie', 'Číslo dresu', 'Ročník'] : ['Rodič', 'E-mail', 'Telefon', 'Heslo', 'Jméno hráče (dítě)', 'Kategorie'];
+    let rows;
+    if (P) rows = [['Adam Novák', CONFIG.planner.teams[0] || 'U9', 7, 2017]];
+    else {
+      rows = DB.members.slice().sort((a, b) => (a.t + a.full).localeCompare(b.t + b.full, 'cs')).map(m => ['', '', '', '', m.full || m.n, m.t]);
+      if (!rows.length) rows = [['Petr Novák', 'petr@email.cz', '+420 777 111 222', '', 'Adam Novák', CONFIG.planner.teams[0] || 'U9']];
+    }
+    const ws = XLSX.utils.aoa_to_sheet([head, ...rows]);
+    ws['!cols'] = (P ? [28, 12, 13, 9] : [24, 28, 18, 14, 28, 11]).map(w => ({wch: w}));
+    XLSX.utils.book_append_sheet(wb, ws, P ? 'Hráči' : 'Rodiče');
+    const help = P
+      ? [['Návod'], ['Jméno hráče – jméno a příjmení (povinné)'], ['Kategorie – ' + CONFIG.planner.teams.join(', ') + ' (povinné)'], ['Číslo dresu, Ročník – nepovinné'], ['Ukázkový řádek před nahráním přepište nebo smažte.']]
+      : [['Návod'], ['Rodič – jméno rodiče'], ['E-mail – povinný, slouží k přihlášení'], ['Telefon, Heslo – nepovinné (bez hesla se vygeneruje)'], ['Jméno hráče (dítě) a Kategorie – dítě musí být v soupisce'], ['Sourozenci: každé dítě na vlastním řádku se stejným e-mailem.'], ['Řádky bez rodiče a e-mailu se přeskočí.']];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(help), 'Návod');
+    XLSX.writeFile(wb, P ? 'predloha-import-hracu.xlsx' : 'predloha-import-rodicu.xlsx');
   }
 
   static pick(row, names) {
@@ -2730,14 +2747,14 @@ class Import {
     return k === undefined ? '' : String(row[k]).trim();
   }
 
-  static read(input) {
+  static read(input, kind) {
     const file = input.files[0]; if (!file) return;
     if (!window.XLSX) { UI.imp = null; return Admin.msg('⚠ Knihovnu pro Excel se nepodařilo načíst.'); }
     const rd = new FileReader();
     rd.onload = e => {
       try {
         const wb = XLSX.read(e.target.result, {type: 'array'}), raw = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval: ''});
-        UI.imp = Import.parse(raw);
+        UI.imp = Import.parse(raw, kind);
         UI.admMsg = '';
       } catch (x) { UI.imp = null; UI.admMsg = '⚠ Soubor se nepodařilo přečíst.'; UI.admOk = false; }
       App.render();
@@ -2746,26 +2763,43 @@ class Import {
     input.value = '';
   }
 
+  static findKid(player, team) {
+    return DB.members.filter(m => (Util.norm(m.full || '') == Util.norm(player) || Util.norm(m.n) == Util.norm(player)) && (!team || m.t == team));
+  }
+
   /** Převede řádky z Excelu na seznam k importu + chyby + náhled počtů. */
-  static parse(raw) {
-    const C = Import.COLS, rows = [], errors = [], seenEmail = new Set(), known = new Set(Object.values(DB.users).map(u => (u.email || '').toLowerCase()));
-    let newPlayers = 0, newAccounts = 0;
+  static parse(raw, kind) {
+    const C = Import.COLS, rows = [], errors = [], P = (kind || 'players') == 'players', teams = CONFIG.planner.teams;
+    const seen = new Set(), known = new Set(Object.values(DB.users).map(u => (u.email || '').toLowerCase()));
+    let newPlayers = 0, existing = 0, newAccounts = 0;
     raw.forEach((r, idx) => {
-      const n = idx + 2, player = Import.pick(r, C.player), team = Import.pick(r, C.team).toUpperCase(), email = Import.pick(r, C.email).toLowerCase();
-      if (!player && !email) return;                                              // prázdný řádek
-      if (!player) return errors.push(`Řádek ${n}: chybí jméno hráče`);
-      if (!CONFIG.planner.teams.includes(team)) return errors.push(`Řádek ${n} (${player}): neznámá kategorie „${team || '—'}“ (existují: ${CONFIG.planner.teams.join(', ')})`);
-      if (email && !Import.MAIL.test(email)) return errors.push(`Řádek ${n} (${player}): neplatný e-mail „${email}“`);
-      const pass = Import.pick(r, C.pass);
-      if (pass && pass.length < 8) return errors.push(`Řádek ${n} (${player}): heslo musí mít aspoň 8 znaků`);
-      const no = Import.pick(r, C.no), year = Import.pick(r, C.year);
-      const row = {n, player, team, no: no === '' || isNaN(+no) ? null : +no, year: year === '' || isNaN(+year) ? null : +year, pname: Import.pick(r, C.pname), email, phone: Import.pick(r, C.phone), pass};
-      rows.push(row);
-      if (!DB.members.some(m => Util.norm(m.full || m.n) == Util.norm(player) && m.t == team)) newPlayers++;
-      if (email && !known.has(email) && !seenEmail.has(email)) newAccounts++;
-      if (email) seenEmail.add(email);
+      const n = idx + 2, player = Import.pick(r, C.player), team = Import.pick(r, C.team).toUpperCase();
+      if (P) {
+        if (!player && !team) return;                                           // prázdný řádek
+        if (!player) return errors.push(`Řádek ${n}: chybí jméno hráče`);
+        if (!teams.includes(team)) return errors.push(`Řádek ${n} (${player}): neznámá kategorie „${team || '—'}“ (existují: ${teams.join(', ')})`);
+        const no = Import.pick(r, C.no), year = Import.pick(r, C.year);
+        rows.push({n, player, team, no: no === '' || isNaN(+no) ? null : +no, year: year === '' || isNaN(+year) ? null : +year});
+        const key = Util.norm(player) + '|' + team;
+        if (DB.members.some(m => Util.norm(m.full || m.n) == Util.norm(player) && m.t == team) || seen.has(key)) existing++; else newPlayers++;
+        seen.add(key);
+        return;
+      }
+      const email = Import.pick(r, C.email).toLowerCase(), pname = Import.pick(r, C.pname), pass = Import.pick(r, C.pass);
+      if (!email && !pname) return;                                             // řádek bez rodiče (např. jen soupiska z předlohy)
+      if (!email) return errors.push(`Řádek ${n} (${pname}): chybí e-mail`);
+      if (!Import.MAIL.test(email)) return errors.push(`Řádek ${n} (${pname || email}): neplatný e-mail „${email}“`);
+      if (pass && pass.length < 8) return errors.push(`Řádek ${n} (${pname || email}): heslo musí mít aspoň 8 znaků`);
+      if (!player) return errors.push(`Řádek ${n} (${pname || email}): chybí jméno hráče (dítěte)`);
+      if (team && !teams.includes(team)) return errors.push(`Řádek ${n} (${player}): neznámá kategorie „${team}“`);
+      const kids = Import.findKid(player, team);
+      if (!kids.length) return errors.push(`Řádek ${n} (${player}): dítě není v soupisce${team ? ' kategorie ' + team : ''} – nejdřív naimportujte hráče`);
+      if (kids.length > 1) return errors.push(`Řádek ${n} (${player}): v soupisce je víc hráčů s tímto jménem – doplňte kategorii`);
+      rows.push({n, player: kids[0].full || kids[0].n, team: kids[0].t, mid: kids[0].id, pname, email, phone: Import.pick(r, C.phone), pass});
+      if (!known.has(email) && !seen.has(email)) newAccounts++;
+      seen.add(email);
     });
-    return {rows, errors, newPlayers, newAccounts, running: false, progress: '', done: null};
+    return {kind: P ? 'players' : 'parents', rows, errors, newPlayers, existing, newAccounts, running: false, progress: '', done: null};
   }
 
   static genPass() {
@@ -2791,14 +2825,16 @@ class Import {
   static async run() {
     const i = UI.imp; if (!i || i.running) return;
     i.running = true; i.progress = '0/' + i.rows.length; App.render();
-    const out = {newPlayers: 0, accounts: 0, linked: 0, errors: [], creds: []}, byEmail = {};
+    const out = {newPlayers: 0, skipped: 0, accounts: 0, linked: 0, errors: [], creds: []}, byEmail = {};
     Object.values(DB.users).forEach(u => { if (u.email) byEmail[u.email.toLowerCase()] = {id: u.id, r: u.r}; });
     for (let k = 0; k < i.rows.length; k++) {
       const r = i.rows[k];
       try {
-        let m = DB.members.find(x => Util.norm(x.full || x.n) == Util.norm(r.player) && x.t == r.team);
-        if (!m) { m = await Import.addPlayer(r); out.newPlayers++; }
-        if (r.email) {
+        if (i.kind == 'players') {
+          if (DB.members.some(x => Util.norm(x.full || x.n) == Util.norm(r.player) && x.t == r.team)) out.skipped++;
+          else { await Import.addPlayer(r); out.newPlayers++; }
+        } else {
+          const m = Model.byId(r.mid); if (!m) throw new Error('dítě už v soupisce není');
           let u = byEmail[r.email];
           if (!u) {
             const pass = r.pass || Import.genPass();
