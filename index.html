@@ -305,7 +305,7 @@ const CONFIG = {
    ===================================================================== */
 const DB = {
   users: {}, members: [], docs: {}, events: [], results: [], payItems: [], plan: [], messages: [],
-  chats: {}, notifs: [], links: [], settings: {}, dm: [], dmContacts: [], dmErr: '', pabs: {}, prefs: {},
+  chats: {}, notifs: [], links: [], settings: {}, dm: [], dmContacts: [], tcoaches: [], dmErr: '', pabs: {}, prefs: {},
   att: {},          // docházka:        "idUdálosti|jménoHráče"  → 'P' | 'O' | 'N'
   coachEv: {},      // druh a datum události u účasti trenéra: "idTrenéra|idUdálosti" → {k:'t', d:'2026-10-12'}
   coachNm: {},      // příjmení trenéra u jeho účasti: "idTrenéra|idUdálosti" → 'Kondaš'
@@ -632,7 +632,7 @@ class Auth {
   /** Vyčistí paměť aplikace a vrátí přihlašovací obrazovku. */
   static reset() {
     Sync.stop();
-    Object.assign(DB, {users:{}, members:[], docs:{}, events:[], results:[], payItems:[], plan:[], messages:[], chats:{}, notifs:[], links:[], settings:{}, dm:[], dmContacts:[],
+    Object.assign(DB, {users:{}, members:[], docs:{}, events:[], results:[], payItems:[], plan:[], messages:[], chats:{}, notifs:[], links:[], settings:{}, dm:[], dmContacts:[], tcoaches:[],
                        att:{}, coachAtt:{}, coachNm:{}, coachEv:{}, nominations:{}, carpool:{}, responses:{}, notes:{}, seen:{}});
     UI.user = null; UI.asTeam = ''; UI.imp = null; UI.recovery = false; UI.more = false; UI.bell = false; UI.modal = null; UI.profile = false; UI.profMsg = ''; UI.pkSel = {}; UI.player = ''; UI.boot = false; UI.kid = ''; UI.editUser = ''; UI.dmWith = ''; UI.dmSearch = ''; UI.ai = null;
     UI.skipKeep = ['lg-pass', 'lg-email'];
@@ -822,6 +822,11 @@ class Sync {
         DB.dmContacts = Array.isArray(c.data) ? c.data : [];
       } catch (e) { DB.dmContacts = []; DB.dmErr = String((e && e.message) || e); }
     },
+    /** Kontakty na trenéry kategorií dítěte (jen rodič; bez funkce v databázi zůstane prázdné). */
+    tcoaches: async () => {
+      try { const c = await sb.rpc('team_coaches'); DB.tcoaches = !c.error && Array.isArray(c.data) ? c.data : []; }
+      catch (e) { DB.tcoaches = []; }
+    },
     club: async () => {
       const rows = await Sync.last('club_messages', 300);
       DB.messages = rows.map(r => ({id: r.id, fid: r.sender_id, f: r.sender_name, role: r.sender_role, kind: r.kind, to: r.recipient_id, s: r.subject, x: r.body, t: Util.stamp(r.created_at)}));
@@ -854,7 +859,7 @@ class Sync {
   /** Která tabulka při změně znovu načte které části paměti. */
   static watch = {
     teams: ['teams'], settings: ['settings'], events: ['events'], results: ['results'], plan: ['plan'], nominations: ['noms'], club_messages: ['club'], notifications: ['notifs'],
-    coach_attendance: ['coach'], direct_messages: ['dm'], player_absence: ['pabs'], user_prefs: ['prefs'], players: ['players', 'people'], player_payments: ['players'], parent_players: ['people'], profiles: ['people']
+    coach_attendance: ['coach'], direct_messages: ['dm'], player_absence: ['pabs'], user_prefs: ['prefs'], players: ['players', 'people'], player_payments: ['players'], parent_players: ['people'], profiles: ['people', 'tcoaches']
   };
 
   static subscribe() {
@@ -1000,7 +1005,16 @@ class Calendar {
   static view() {
     const team = Model.team(UI.kid);
     return `<div class="col"><h2 style="margin-top:0">📅 Nadcházející · ${UI.kid} (${team})</h2>
-      ${Model.eventsOf(team).map(e => Calendar.eventCard(e)).join('')}${Calendar.history(team)}</div>`;
+      ${Model.eventsOf(team).map(e => Calendar.eventCard(e)).join('')}${Calendar.history(team)}${Calendar.contacts(team)}</div>`;
+  }
+
+  /** Kontakty na trenéry kategorie: jméno, po rozkliknutí telefon a e-mail. */
+  static contacts(team) {
+    const L = DB.tcoaches.filter(c => c.team == team);
+    return `<h2>📞 Kontakt na trenéry</h2>${L.length ? L.map(c => `<details class="card"><summary><b>${esc(c.name || c.email)}</b></summary>
+        <div style="margin-top:8px" class="row">${c.phone ? `<a class="btn" href="tel:${esc(Util.phone(c.phone))}">📞 ${esc(c.phone)}</a>` : ''}
+        ${c.email ? `<a class="btn" href="mailto:${esc(c.email)}">✉ ${esc(c.email)}</a>` : ''}
+        ${!c.phone && !c.email ? '<span class="mut">Trenér nemá vyplněný kontakt.</span>' : ''}</div></details>`).join('') : '<div class="card mut">Trenér kategorie zatím není přiřazen.</div>'}`;
   }
 
   /** Karta jedné události (trénink / zápas / zrušeno) s tlačítky účasti. */

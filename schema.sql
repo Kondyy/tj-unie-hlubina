@@ -609,6 +609,15 @@ $$ select p.id, p.name, p.role, p.team from public.profiles p
          or (public.app_role() = 'p' and p.role = 'c' and public.parent_in_team(auth.uid(), p.team)) )
     order by p.role, p.name $$;
 
+-- Kontakty na trenéry kategorií, ve kterých hraje dítě přihlášeného rodiče (rodič jinak profily trenérů číst nesmí)
+create or replace function public.team_coaches() returns table (id uuid, name text, team text, email text, phone text)
+language sql stable security definer set search_path = public as
+$$ select p.id, p.name, p.team, p.email, p.phone from public.profiles p
+    where p.role = 'c' and public.app_role() = 'p'
+      and public.parent_in_team(auth.uid(), p.team)
+    order by p.team, p.name $$;
+grant execute on function public.team_coaches() to authenticated;
+
 create or replace function public.dm_before_insert() returns trigger
 language plpgsql security definer set search_path = public as
 $$ declare a public.profiles; b public.profiles; begin

@@ -63,3 +63,6 @@ Po importu rodičů stáhnout Excel s přístupy a předat rodičům – při pr
 - [ ] Vedení: platby (QR s variabilním symbolem), přehled docházky + export, import hráčů
 - [ ] Číslo účtu klubu vyplněné ve **Správa → Číslo účtu**
 - [ ] Rodiče dostali přístupy a návod „Přidat na plochu“
+
+### Kontakt na trenéry
+Rodič vidí v záložce Přehled úplně dole jména trenérů kategorie svého dítěte; po rozkliknutí telefon a e-mail (telefon si trenér vyplní v Profilu). Vyžaduje znovu spustit `schema.sql` (funkce `team_coaches`).
