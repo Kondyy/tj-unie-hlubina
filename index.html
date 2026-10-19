@@ -1328,7 +1328,7 @@ class Events {
     }
     return `<button class="btn" onclick="Events.closeMatch()">← Zápasy</button>
       <h2>🏆 vs. ${esc(e.o)} · ${Util.date(e.d)} · ${esc(e.t)}</h2>
-      <div class="card ev ${e.x ? 'x' : e.k}"><div class="pay"><b>📍 ${esc(e.pl)}</b><span class="pill ${e.x ? 'x' : 'z'}">${e.x ? 'Zrušeno' : 'Zápas'}</span></div>
+      <div class="card ev ${e.x ? 'x' : e.k}"><div class="pay"><b>📍 ${esc(e.pl)} · vs. ${esc(e.o)}</b><span class="pill ${e.x ? 'x' : 'z'}">${e.x ? 'Zrušeno' : 'Zápas'}</span></div>
         <div class="row" style="margin-top:8px">
           ${!e.x ? `<button class="btn" onclick="Events.toggleNomination('${e.id}')">Nominace (${(DB.nominations[e.id] || []).length})</button>` : ''}
           ${!e.x ? `<button class="btn" onclick="Events.toggleResult('${e.id}')">🏁 Výsledek</button>` : ''}
