@@ -2300,12 +2300,14 @@ class AttImport {
   static view() {
     const i = UI.ai;
     return `<div class="card" style="margin-top:12px"><b>📥 Import docházky z tabulky</b>
-      <div class="mut">Nahrajte klubovou tabulku docházky (Excel). Načtou se hráči i trenéři, dny a hodnoty 1 / 0. Jména se hledají v soupisce bez ohledu na pořadí (příjmení jméno i jméno příjmení). Docházka za dny, které už v aplikaci jsou, se přepíše údaji z tabulky.</div>
-      <label class="btn" style="cursor:pointer;display:block;text-align:center;margin-top:8px">📂 Vybrat tabulku<input type="file" accept=".xlsx,.xls,.csv" hidden onchange="AttImport.read(this)"></label>
+      <div class="mut">Nahrajte tabulku s celkovou docházkou hráčů. Stáhněte si předlohu (je v ní už vaše soupiska), doplňte sloupce <b>Celková účast</b> a <b>Počet tréninků</b> a nahrajte ji zpět. Hráči se hledají podle jména (a ročníku), hodnoty se uloží jako dosavadní docházka hráče. Podporovaná je i původní klubová tabulka s daty a hodnotami 1 / 0.</div>
+      <button class="btn" type="button" style="width:100%;margin-top:8px" onclick="AttImport.template()">⬇ Stáhnout předlohu</button>
+      <label class="btn" style="cursor:pointer;display:block;text-align:center;margin-top:8px">📂 Vybrat vyplněnou tabulku<input type="file" accept=".xlsx,.xls,.csv" hidden onchange="AttImport.read(this)"></label>
       ${i && !i.done ? AttImport.preview(i) : ''}${i && i.done ? AttImport.report(i) : ''}</div>`;
   }
 
   static preview(i) {
+    if (i.mode == 'simple') return AttImport.previewSimple(i);
     return `<div style="margin-top:10px;border-top:1px solid var(--bd);padding-top:8px">
       ${i.blocks.map(b => `<div style="margin-bottom:8px"><b>${esc(b.team)}</b> · ${b.dates.length} tréninků (${esc(Util.isoShort(b.dates[0] || ''))} – ${esc(Util.isoShort(b.dates[b.dates.length - 1] || ''))})
         <div class="mut">Hráčů: ${b.players.length}${b.unmatched.length ? ` · nenalezeno v soupisce: ${b.unmatched.length}` : ''} · trenérů v tabulce: ${b.coaches.length}${b.skip ? ` · <span class="cr">${esc(b.skip)}</span>` : ''}</div>
@@ -2318,6 +2320,7 @@ class AttImport {
 
   static report(i) {
     const d = i.done;
+    if (d.simple) return `<div style="margin-top:10px;border-top:1px solid var(--bd);padding-top:8px"><div class="cg"><b>✔ Import dokončen</b></div><div>Aktualizováno hráčů: <b>${d.n}</b></div>${d.errors.length ? `<div class="warn" style="margin-top:6px">⚠ ${d.errors.slice(0, 6).map(esc).join('<br>')}</div>` : ''}<button class="btn" style="width:100%;margin-top:8px" onclick="AttImport.cancel()">Hotovo</button></div>`;
     return `<div style="margin-top:10px;border-top:1px solid var(--bd);padding-top:8px"><div class="cg"><b>✔ Import dokončen</b></div>
       <div>Tréninků nových: <b>${d.newEvents}</b>, už existovalo: <b>${d.oldEvents}</b> · záznamů docházky hráčů: <b>${d.players}</b> · trenérů: <b>${d.coaches}</b></div>
       ${d.errors.length ? `<div class="warn" style="margin-top:6px">⚠ ${d.errors.slice(0, 6).map(esc).join('<br>')}</div>` : ''}
@@ -2335,7 +2338,7 @@ class AttImport {
       try {
         const wb = XLSX.read(e.target.result, {type: 'array', cellDates: true});
         const grids = wb.SheetNames.map(n => ({name: n, rows: XLSX.utils.sheet_to_json(wb.Sheets[n], {header: 1, raw: true, defval: null})}));
-        UI.ai = Object.assign(AttImport.parseGrids(grids, 0), {year: '', grids});
+        UI.ai = AttImport.parseSimple(grids) || Object.assign(AttImport.parseGrids(grids, 0), {year: '', grids});
       } catch (x) { UI.ai = {blocks: [], notes: ['Soubor se nepodařilo přečíst.'], year: '', done: null}; }
       App.render();
     };
@@ -2343,7 +2346,74 @@ class AttImport {
     input.value = '';
   }
 
-  // ---------- zpracování tabulky ----------
+
+  // ---------- jednoduchá předloha: Jméno hráče | Ročník | Celková účast | Počet tréninků ----------
+  static template() {
+    if (!window.XLSX) return alert('Knihovnu pro Excel se nepodařilo načíst.');
+    const me = UI.user, L = (Model.mgmt(me) ? DB.members.slice() : Model.membersOf(me.team)).sort((a, b) => (a.t + a.full).localeCompare(b.t + b.full, 'cs'));
+    const head = ['Jméno hráče', 'Ročník', 'Celková účast', 'Počet tréninků'];
+    const rows = L.map(m => [m.full || m.n, m.by === '' ? '' : m.by, m.a[0], m.a[1]]);   // dosavadní docházka (bez tréninků označených v aplikaci)
+    const ws = XLSX.utils.aoa_to_sheet([head, ...(rows.length ? rows : [['Novák Jan', 2018, 12, 15]])]);
+    ws['!cols'] = [{wch: 28}, {wch: 9}, {wch: 14}, {wch: 15}];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Docházka');
+    XLSX.writeFile(wb, 'predloha-dochazka.xlsx');
+  }
+
+  /** Najde v listech tabulku „Jméno hráče | Ročník | Celková účast | Počet tréninků“; vrátí náhled importu, nebo null (pak se zkusí původní klubová tabulka). */
+  static parseSimple(grids) {
+    const me = UI.user, own = Model.mgmt(me) ? '' : me.team, pool = own ? DB.members.filter(m => m.t == own) : DB.members, idx = {};
+    pool.forEach(m => [AttImport.key(m.full), AttImport.key(m.n)].forEach(k => { if (k) (idx[k] = idx[k] || []).push(m); }));
+    const num = v => { const x = Number(String(v == null ? '' : v).replace(',', '.').trim()); return v !== null && String(v).trim() !== '' && isFinite(x) && x >= 0 ? Math.round(x) : null; };
+    const year = v => { const x = num(v); return x === null ? 0 : x < 100 ? 2000 + x : x; };
+    const rows = []; let found = false;
+    for (const g of grids) {
+      const R = g.rows || [];
+      for (let ri = 0; ri < R.length && !found; ri++) {
+        const hdr = (R[ri] || []).map(v => Util.norm(String(v == null ? '' : v)));
+        const cn = hdr.findIndex(h => h.startsWith('jmeno') && !h.includes('trener')), cy = hdr.findIndex(h => h.includes('rocnik'));
+        const cp = hdr.findIndex(h => h.includes('ucast')), ct = hdr.findIndex(h => h.includes('pocet') || h.includes('treninku'));
+        if (cn < 0 || cp < 0 || ct < 0 || (R[ri] || []).some((v, ci) => ci > cn && AttImport.cellDate(v))) continue;
+        found = true;
+        for (let r = ri + 1; r < R.length; r++) {
+          const row = R[r] || [], name = String(row[cn] == null ? '' : row[cn]).trim(); if (!name) continue;
+          const by = cy >= 0 ? year(row[cy]) : 0, p = num(row[cp]), t = num(row[ct]), o = {name, by, p, t, m: null, err: ''};
+          let c = idx[AttImport.key(name)] || [];
+          if (c.length > 1 && by) c = c.filter(m => +m.by == by);
+          if (p === null || t === null) o.err = 'chybí číslo';
+          else if (p > t) o.err = 'účast je větší než počet tréninků';
+          else if (c.length == 1) o.m = c[0];
+          else o.err = c.length ? 'jméno není jednoznačné (doplňte ročník)' : own ? 'nenalezen v soupisce vaší kategorie' : 'nenalezen v soupisce';
+          rows.push(o);
+        }
+      }
+    }
+    return found ? {mode: 'simple', rows, running: false, progress: '', done: null} : null;
+  }
+
+  static previewSimple(i) {
+    const ok = i.rows.filter(r => r.m), bad = i.rows.filter(r => !r.m);
+    return `<div style="margin-top:10px;border-top:1px solid var(--bd);padding-top:8px">
+      <div><b>${ok.length}</b> hráčů se uloží${bad.length ? `, <span class="cr"><b>${bad.length}</b> řádků nelze použít</span>` : ''}.</div>
+      ${ok.slice(0, 8).map(r => { const [p0, t0] = r.m.a; return `<div class="pl"><span>${esc(r.m.full || r.m.n)} <span class="mut">${esc(r.m.t)}</span></span><span class="mut">${p0}/${t0} → <b>${r.p}/${r.t}</b></span></div>`; }).join('')}
+      ${ok.length > 8 ? `<div class="mut">… a dalších ${ok.length - 8}</div>` : ''}
+      ${bad.length ? `<div class="warn" style="margin-top:6px">${bad.slice(0, 8).map(r => esc(r.name) + ' – ' + esc(r.err)).join('<br>')}${bad.length > 8 ? '<br>…' : ''}</div>` : ''}
+      <div class="row" style="margin-top:8px"><button class="btn" onclick="AttImport.cancel()">Zrušit</button>
+        <button class="btn ok" ${ok.length && !i.running ? '' : 'disabled'} onclick="AttImport.run()">${i.running ? 'Ukládám…' : 'Provést import'}</button></div></div>`;
+  }
+
+  /** Uloží dosavadní docházku (att_present / att_total) hráčů. Docházka označená v aplikaci se k ní dál přičítá. */
+  static async runSimple() {
+    const i = UI.ai, out = {simple: 1, n: 0, errors: []}; i.running = true; App.render();
+    const L = i.rows.filter(r => r.m);
+    for (let k = 0; k < L.length; k += 10) {
+      const res = await Promise.all(L.slice(k, k + 10).map(r => sb.from('players').update({att_present: r.p, att_total: r.t}).eq('id', r.m.id).select()));
+      res.forEach((x, j) => { if (x.error) out.errors.push(L[k + j].name + ': ' + x.error.message); else if (!x.data || !x.data.length) out.errors.push(L[k + j].name + ': uložení nebylo povoleno'); else out.n++; });
+    }
+    try { await Sync.loaders.players(); } catch (e) {}
+    i.running = false; i.done = out; App.render();
+  }
+
+  // ---------- zpracování původní klubové tabulky ----------
   /** Slova jména bez diakritiky, bez závorky s ročníkem, seřazená (pořadí „příjmení jméno“ nehraje roli). */
   static key(n) { return Util.norm(String(n || '').replace(/\(.*$/, '')).split(/\s+/).filter(Boolean).sort().join(' '); }
 
@@ -2407,6 +2477,7 @@ class AttImport {
 
   static async run() {
     const i = UI.ai; if (!i || i.running) return;
+    if (i.mode == 'simple') return AttImport.runSimple();
     const year = +i.year || 0;
     i.running = true; i.progress = ''; App.render();
     const out = {newEvents: 0, oldEvents: 0, players: 0, coaches: 0, errors: []};
