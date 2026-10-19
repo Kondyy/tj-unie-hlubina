@@ -869,6 +869,18 @@ end $$;
 drop trigger if exists pabs_after_change on public.player_absence;
 create trigger pabs_after_change after insert or delete on public.player_absence for each row execute function public.pabs_after_change();
 
+
+-- Dosavadní docházka trenérů (z importu): uloží vedení, trenér jen sobě
+alter table public.profiles add column if not exists att_present int not null default 0;
+alter table public.profiles add column if not exists att_total   int not null default 0;
+create or replace function public.set_coach_baseline(cid uuid, pres int, tot int) returns void
+language plpgsql security definer set search_path = public as
+$$ begin
+  if not (public.is_mgmt() or (cid = auth.uid() and public.app_role() in ('c','a'))) then raise exception 'Nemáte oprávnění'; end if;
+  if pres < 0 or tot < pres then raise exception 'Neplatné hodnoty'; end if;
+  update public.profiles set att_present = pres, att_total = tot where id = cid and role in ('c','a');
+end $$;
+
 -- ---------------------------------------------------------------------
 -- 5. OPRÁVNĚNÍ ROLÍ (RLS je filtruje; anon nemá k datům přístup)
 -- ---------------------------------------------------------------------
