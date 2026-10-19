@@ -46,6 +46,11 @@ on conflict (key) do update set value = excluded.value;
 ## Import hráčů a rodičů (Vedení / Správce)
 Záložka **Správa → Import**: stáhnout šablonu, vyplnit (Hráč, Kategorie, Číslo dresu, Ročník, Rodič, E-mail rodiče, Telefon rodiče, Heslo), nahrát, zkontrolovat náhled, spustit. Po importu stáhnout Excel s přístupy a předat rodičům – při prvním přihlášení si změní heslo a potvrdí souhlas s GDPR.
 
+## Nastavení, import docházky a vymazání dat
+- Záložka **Nastavení** (všechny role): zapnutí upozornění v telefonu a výběr, co má chodit (chat, soukromé zprávy, zprávy vedení, tréninky a zápasy, platby), export statistik do Excelu a – pro trenéry a vedení – import docházky z klubové tabulky (hlavička „Post | Jméno | data…“, hodnoty 1/0).
+- **Stálá absence**: v detailu hráče (Soupiska) lze nastavit dny, kdy hráč pravidelně nemůže; nové tréninky v ten den mají předvyplněno „Omluven“.
+- **Vymazání všech dat** klubu (hráči, události, docházka, platby, zprávy…): spusťte `reset-data.sql` v SQL Editoru (účty a kategorie zůstanou). Nejdřív spusťte aktuální `schema.sql`.
+
 ## Kontrolní seznam před ostrým provozem (pilot U9)
 - [ ] SQL spuštěné, `admin-users` nasazená, první Správce nastaven
 - [ ] Auth: Site URL + Redirect URL, vypnutá veřejná registrace

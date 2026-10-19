@@ -151,6 +151,8 @@ label.mut{display:block;margin-top:8px}
 button.btn.ok{background:linear-gradient(135deg,rgba(227,30,38,.55),rgba(36,82,161,.8));border-color:rgba(140,170,240,.65);font-weight:600}
 .tl div.mine{background:rgba(227,30,38,.5);border-color:rgba(255,120,128,.9)}
 .mo .card{max-height:92vh;overflow:auto}
+.pw{position:relative;display:block}.pw input{padding-right:46px}.eye{position:absolute;right:2px;top:4px;bottom:4px;width:42px;background:none;border:0;color:var(--mut);font-size:18px;cursor:pointer}
+.keep{display:flex;align-items:center;gap:8px;margin-top:6px;color:var(--mut);font-size:14px}.keep input{width:auto;margin:0}
 .pill{display:inline-block;padding:2px 10px;border:1px solid;border-radius:99px;font-size:12px;white-space:nowrap}
 .ev{border-left:4px solid rgb(var(--c))}                       /* karta události – barevný pruh */
 .ev.x{opacity:.75}
@@ -251,7 +253,15 @@ const SUPABASE_URL = 'https://sbiweuhxsemjcvmwavwa.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bxh21AxUju-g3mMlfvUIjw_KcjkoEO4';
 // Pozn.: klient se jmenuje "sb", ne "supabase" – knihovna z CDN už definuje globální proměnnou "supabase"
 // (kdyby ji kód znovu deklaroval, prohlížeč by hlásil "Identifier 'supabase' has already been declared").
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// Úložiště přihlášení: „Zůstat přihlášený“ → trvale (localStorage), jinak jen do zavření karty (sessionStorage)
+const KEEP_KEY = 'tj-keep';
+const authStorage = {
+  keep() { try { return localStorage.getItem(KEEP_KEY) !== '0'; } catch (e) { return true; } },
+  getItem(k) { try { return sessionStorage.getItem(k) ?? localStorage.getItem(k); } catch (e) { return null; } },
+  setItem(k, v) { try { if (authStorage.keep()) { localStorage.setItem(k, v); sessionStorage.removeItem(k); } else { sessionStorage.setItem(k, v); localStorage.removeItem(k); } } catch (e) {} },
+  removeItem(k) { try { localStorage.removeItem(k); sessionStorage.removeItem(k); } catch (e) {} }
+};
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {auth: {storage: authStorage}});
 
 
 /* =====================================================================
@@ -260,7 +270,8 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const CONFIG = {
   days: ['Po','Út','St','Čt','Pá','So','Ne'],
   account: '',                              // číslo účtu klubu pro platby (zobrazí se rodičům), např. '123456789/0800'
-  lowAttendance: 75,                        // docházka pod tuto hodnotu (%) se zobrazí červeně
+  attGood: 70,                              // docházka od této hodnoty (%) je zelená, od attMid žlutá, pod ní červená
+  attMid: 40,
   venues: ['Hřiště A','Hřiště B – Umělka','Hřiště C – Loučka','Hala'],                      // místa pro nové události
   roles: {p:'Rodič', c:'Trenér', v:'Vedení', a:'Správce'},                            // názvy rolí
   excuseReasons: ['Nemoc','Škola','Rodinné důvody'],                    // důvody omluvy
@@ -294,7 +305,7 @@ const CONFIG = {
    ===================================================================== */
 const DB = {
   users: {}, members: [], docs: {}, events: [], results: [], payItems: [], plan: [], messages: [],
-  chats: {}, notifs: [], links: [], settings: {}, dm: [], dmContacts: [],
+  chats: {}, notifs: [], links: [], settings: {}, dm: [], dmContacts: [], dmErr: '', pabs: {}, prefs: {},
   att: {},          // docházka:        "idUdálosti|jménoHráče"  → 'P' | 'O' | 'N'
   coachEv: {},      // druh a datum události u účasti trenéra: "idTrenéra|idUdálosti" → {k:'t', d:'2026-10-12'}
   coachNm: {},      // příjmení trenéra u jeho účasti: "idTrenéra|idUdálosti" → 'Kondaš'
@@ -324,6 +335,7 @@ const UI = {
   reason: '',            // vybraný důvod omluvy
   qr: null,              // index příspěvku, u kterého je zobrazený QR kód
   attEvent: 0,           // trenér: otevřený trénink v docházce (0 = seznam tréninků)
+  matchEvent: 0,         // trenér: otevřený zápas (0 = seznam zápasů)
   nomEvent: 0,           // trenér: zápas s rozbalenou nominací
   noteTag: 'g',          // trenér: aktivní štítek poznámky
   payFilter: 'all',      // vedení/platby: all | dl (dlužníci) | ok
@@ -384,6 +396,11 @@ class Util {
   static iso(x) { return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`; }
   /** Den v týdnu (0 = Po) z "2026-10-19". */
   static dayIndex(iso) { const [y, m, d] = iso.split('-').map(Number); return Math.round((new Date(y, m - 1, d) - Util.weekStart()) / 864e5); }
+  /** Barva docházky: 70–100 % zelená, 40–69 % žlutá, 0–39 % červená. */
+  static attLvl(p) { return p >= CONFIG.attGood ? 'g' : p >= CONFIG.attMid ? 'y' : 'r'; }
+  static attCls(p) { return {g: 'cg', y: 'cw', r: 'cr'}[Util.attLvl(p)]; }
+  static attBg(p)  { return 'var(--' + Util.attLvl(p) + ')'; }
+  static attPill(p) { return {g: 'ok', y: 'wa', r: 'no'}[Util.attLvl(p)]; }
   /** "2026-10-12" → "Po 12.10." */
   static isoShort(iso) { const [y, m, d] = String(iso).split('-').map(Number); if (!y) return '—'; return `${CONFIG.days[(new Date(y, m - 1, d).getDay() + 6) % 7]} ${d}.${m}.`; }
   /** Popisek dne: 0 → "Po 19.10." */
@@ -559,7 +576,8 @@ class Auth {
         <b>Přihlášení</b>
         ${SUPABASE_KEY.startsWith('YOUR_') ? '<div class="warn">⚠ V kódu doplňte SUPABASE_KEY (Supabase → Project Settings → API → publishable key).</div>' : ''}
         <label class="mut">E-mail<input id="lg-email" type="email" autocomplete="username" placeholder="vas@email.cz" required></label>
-        <label class="mut">Heslo<input id="lg-pass" type="password" autocomplete="current-password" required></label>
+        <label class="mut">Heslo<span class="pw"><input id="lg-pass" type="password" autocomplete="current-password" required><button type="button" class="eye" id="lg-eye" onclick="Auth.peek()" aria-label="Zobrazit heslo" title="Zobrazit / skrýt heslo">👁</button></span></label>
+        <label class="keep"><input type="checkbox" id="lg-keep" ${authStorage.keep() ? 'checked' : ''}> Zůstat přihlášený</label>
         ${UI.authMsg ? `<div class="warn">${esc(UI.authMsg)}</div>` : ''}
         <button class="btn ok" id="lg-btn" type="submit" style="width:100%;margin-top:10px">Přihlásit se</button>
         <div class="mut" style="margin-top:10px">Přihlašovací údaje vám vytvořil správce klubu. <a href="#" onclick="Auth.forgot();return false" style="color:var(--ac,#6ee7b7)">Zapomněli jste heslo?</a></div>
@@ -580,8 +598,11 @@ class Auth {
     Push.init();
   }
 
+  /** Zobrazí / skryje zadané heslo. */
+  static peek() { const i = $('#lg-pass'); if (i) i.type = i.type == 'password' ? 'text' : 'password'; }
   static async login() {
     const email = ($('#lg-email').value || '').trim(), password = $('#lg-pass').value || '';
+    try { localStorage.setItem(KEEP_KEY, $('#lg-keep') && !$('#lg-keep').checked ? '0' : '1'); } catch (e) {}
     if (!email || !password) return;
     $('#lg-btn').disabled = true;
     const { data, error } = await sb.auth.signInWithPassword({email, password});
@@ -644,7 +665,7 @@ class Sync {
       await Sync.loadAll();
       const u = DB.users[uid];
       if (!u) throw new Error('Váš účet nemá profil. Kontaktujte správce klubu.');
-      UI.user = u; UI.tab = TABS[u.r][0].id; UI.chatSub = 'team'; UI.bell = false; UI.player = ''; UI.attEvent = 0; UI.modal = null;
+      UI.user = u; UI.tab = TABS[u.r][0].id; UI.chatSub = 'team'; UI.bell = false; UI.player = ''; UI.attEvent = 0; UI.matchEvent = 0; UI.modal = null;
       if (u.r == 'p') { UI.kid = u.kids[0] || ''; UI.chatTeam = UI.kid ? Model.team(UI.kid) : ''; }
       Sync.subscribe();
     } catch (e) {
@@ -753,10 +774,26 @@ class Sync {
       DB.att = {}; DB.responses = {}; DB.carpool = {};
       rows.forEach(r => { const m = Model.byId(r.player_id); if (m) Sync.applyAtt(r, m); });
     },
+    /** Stálá absence hráčů: {idHráče: [dny 0=Po…6=Ne]} (když tabulka ještě není, zůstane prázdné). */
+    pabs: async () => {
+      const { data, error } = await sb.from('player_absence').select('*');
+      DB.pabs = {}; if (error || !data) return;
+      data.forEach(r => (DB.pabs[r.player_id] = DB.pabs[r.player_id] || []).push(r.weekday));
+    },
+    /** Moje nastavení upozornění. */
+    prefs: async () => {
+      const { data, error } = await sb.from('user_prefs').select('*');
+      DB.prefs = (!error && data && data[0] && data[0].notif) || {};
+    },
     coach: async () => {
-      const rows = await Sync.fetchAll('coach_attendance', q => q.order('event_id').order('coach_id'));
+      const rows = await Sync.fetchAll('coach_attendance', q => q.order('event_id').order('coach_id')), dt = {};
+      const miss = [...new Set(rows.filter(r => !r.ev_date).map(r => r.event_id))];       // starší záznamy bez data: dohledat z událostí
+      for (let i = 0; i < miss.length; i += 100) {
+        try { const q = await sb.from('events').select('id,kind,event_date').in('id', miss.slice(i, i + 100)); (q.data || []).forEach(e => dt[e.id] = e); } catch (e) {}
+      }
       DB.coachAtt = {}; DB.coachNm = {}; DB.coachEv = {};
-      rows.forEach(r => { const k = r.coach_id + '|' + r.event_id; DB.coachAtt[k] = r.state; DB.coachNm[k] = Util.surname(r.coach_name); DB.coachEv[k] = {k: r.ev_kind || 't', d: r.ev_date || ''}; });
+      rows.forEach(r => { const k = r.coach_id + '|' + r.event_id, e = dt[r.event_id] || {}; DB.coachAtt[k] = r.state; DB.coachNm[k] = Util.surname(r.coach_name);
+        DB.coachEv[k] = {k: r.ev_kind || e.kind || 't', d: r.ev_date || e.event_date || ''}; });
     },
     noms: async () => {
       const rows = await Sync.fetchAll('nominations', q => q.order('event_id').order('player_id'));
@@ -778,8 +815,12 @@ class Sync {
       try {
         const rows = await Sync.last('direct_messages', 500);
         DB.dm = rows.map(r => ({id: r.id, fid: r.from_id, tid: r.to_id, fn: r.from_name, tn: r.to_name, x: r.body, t: Util.stamp(r.created_at)}));
-        const c = await sb.rpc('dm_contacts'); DB.dmContacts = Array.isArray(c.data) ? c.data : [];
-      } catch (e) { DB.dm = []; DB.dmContacts = []; }
+      } catch (e) { DB.dm = []; }
+      DB.dmErr = '';
+      try {
+        const c = await sb.rpc('dm_contacts'); if (c.error) throw c.error;
+        DB.dmContacts = Array.isArray(c.data) ? c.data : [];
+      } catch (e) { DB.dmContacts = []; DB.dmErr = String((e && e.message) || e); }
     },
     club: async () => {
       const rows = await Sync.last('club_messages', 300);
@@ -813,7 +854,7 @@ class Sync {
   /** Která tabulka při změně znovu načte které části paměti. */
   static watch = {
     teams: ['teams'], settings: ['settings'], events: ['events'], results: ['results'], plan: ['plan'], nominations: ['noms'], club_messages: ['club'], notifications: ['notifs'],
-    coach_attendance: ['coach'], direct_messages: ['dm'], players: ['players', 'people'], player_payments: ['players'], parent_players: ['people'], profiles: ['people']
+    coach_attendance: ['coach'], direct_messages: ['dm'], player_absence: ['pabs'], user_prefs: ['prefs'], players: ['players', 'people'], player_payments: ['players'], parent_players: ['people'], profiles: ['people']
   };
 
   static subscribe() {
@@ -1211,7 +1252,6 @@ class Attendance {
           <div class="mut">📍 ${esc(t.pl)}</div>${t.x ? '' : '<div class="mut">Klepnutím otevřete docházku →</div>'}
           <div class="row" style="margin-top:8px"><button class="btn" onclick="event.stopPropagation();Events.cancel('${t.id}')">${t.x ? 'Obnovit trénink' : 'Zrušit trénink'}</button><button class="btn" style="flex:none;color:var(--r)" onclick="event.stopPropagation();Events.remove('${t.id}')">🗑 Smazat</button></div></div>`;
       }).join('') || '<div class="card mut">Tento týden zatím žádný trénink. Tréninky se přidají automaticky podle rozvrhu hřišť, který nastavuje vedení.</div>'}</div>
-      ${AttImport.view()}
       <h2>+ Přidat trénink ručně</h2><div class="card">
         <div class="row"><select id="tr-day">${CONFIG.days.map((n, i) => `<option value="${i}">${Util.date(i)}</option>`).join('')}</select>
           <input id="tr-time" placeholder="Čas (16:00)"></div>
@@ -1221,10 +1261,10 @@ class Attendance {
     return `<button class="btn" onclick="Attendance.close()">← Tréninky</button>        <!-- 2) detail tréninku -->
       <h2>${Util.date(e.d)} · ${e.t} · ${esc(e.pl)}</h2>${Attendance.coachCard(e)}
       <div class="g2" style="margin-top:10px">${Model.membersOf(team).map(m => {
-        const a = DB.att[e.id + '|' + m.n], p = Model.attPct(m), [ps, tt] = Model.attCount(m), low = p < CONFIG.lowAttendance;
+        const a = DB.att[e.id + '|' + m.n], p = Model.attPct(m), [ps, tt] = Model.attCount(m);
         return `<div class="card"><div style="display:flex;gap:10px;align-items:center">${Util.avatar(m, 40)}
-            <div style="flex:1;min-width:0"><b>${esc(m.full || m.n)}</b><div class="mut">Účast <b class="${low ? 'cr' : 'cg'}">${p} %</b> (${ps}/${tt} tréninků)</div></div></div>
-          <div class="bar" style="margin:8px 0"><i style="width:${p}%;background:${low ? 'var(--y)' : 'var(--g)'}"></i></div>
+            <div style="flex:1;min-width:0"><b>${esc(m.full || m.n)}</b><div class="mut">Účast <b class="${Util.attCls(p)}">${p} %</b> (${ps}/${tt} tréninků)</div></div></div>
+          <div class="bar" style="margin:8px 0"><i style="width:${p}%;background:${Util.attBg(p)}"></i></div>
           <div class="row">${CONFIG.attStates.map(([c, l, k]) => `<button class="btn ${a == c ? k : ''}" onclick="Attendance.mark('${e.id}','${Util.q(m.n)}','${c}')">${l}</button>`).join('')}</div></div>`;
       }).join('')}</div>`;
   }
@@ -1235,11 +1275,12 @@ class Attendance {
   /** Karta "Moje účast (trenér)" – trenér potvrdí, jestli přijde (u zrušení se upozorní vedení). */
   /** Karta „Moje docházka“ trenéra: procenta, počet účastí a seznam absencí. */
   static mine() {
-    const u = UI.user, st = Model.coachStats(u.id), low = st.pct < CONFIG.lowAttendance, shown = st.abs.slice(0, 8);
-    return `<div class="card"><div class="pay"><b>👤 Moje absence a docházka</b><span class="pill ${st.t ? (low ? 'no' : 'ok') : 'z'}">${st.t ? st.pct + ' % · ' + st.p + '/' + st.t : 'zatím bez údajů'}</span></div>
-      ${st.t ? `<div class="bar" style="margin:8px 0"><i style="width:${st.pct}%;background:${low ? 'var(--y)' : 'var(--g)'}"></i></div>
-        <div>${st.abs.length ? '<b>Moje absence:</b> ' + shown.map(d => esc(Util.isoShort(d))).join(', ') + (st.abs.length > shown.length ? ` a ${st.abs.length - shown.length} dalších` : '') : '<span class="cg">Žádná absence 👍</span>'}</div>`
-        : '<div class="mut" style="margin-top:6px">Docházka se počítá z toho, co u tréninků potvrdíte („Zúčastním se“ / „Nemohu“), nebo z importu tabulky níže.</div>'}</div>`;
+    const st = Model.coachStats(UI.user.id), known = st.abs.filter(Boolean), shown = known.slice(0, 8);
+    return `<div class="card"><div class="pay"><b>👤 Moje absence a docházka</b>${st.t ? `<span class="pill ${Util.attPill(st.pct)}">${st.p}/${st.t}</span>` : '<span class="pill z">zatím bez údajů</span>'}</div>
+      ${st.t ? `<div style="display:flex;align-items:baseline;gap:8px;margin-top:6px"><b class="${Util.attCls(st.pct)}" style="font-size:26px">${st.pct} %</b><span class="mut">účast na trénincích (${st.p}/${st.t})</span></div>
+        <div class="bar" style="margin:6px 0 8px"><i style="width:${st.pct}%;background:${Util.attBg(st.pct)}"></i></div>
+        <div>${st.abs.length ? `<b>Moje absence (${st.abs.length}):</b> ` + (shown.length ? shown.map(d => esc(Util.isoShort(d))).join(', ') + (known.length > shown.length ? ` a ${known.length - shown.length} dalších` : '') : 'datum se zobrazí po aktualizaci databáze') : '<span class="cg">Žádná absence 👍</span>'}</div>`
+        : '<div class="mut" style="margin-top:6px">Docházka se počítá z toho, co u tréninků potvrdíte („Zúčastním se“ / „Nemohu“), nebo z importu tabulky v Nastavení.</div>'}</div>`;
   }
 
   static coachCard(e, inline) {
@@ -1272,17 +1313,30 @@ class Attendance {
    Events – správa tréninků a zápasů, zrušení, nominace hráčů (TRENÉR)
    --------------------------------------------------------------------- */
 class Events {
-  /** Záložka "Zápasy": zápasy týmu + formulář pro nový (tréninky se spravují v záložce Tréninky). */
+  /** Záložka "Zápasy": seznam zápasů týmu → po rozkliknutí detail (nominace, výsledek, zrušení…), stejně jako u tréninků. */
   static view() {
-    return `<div class="g2">${Model.eventsOf(UI.user.team).filter(e => e.k == 'z').map(e => `<div class="card ev ${e.x ? 'x' : e.k}">
-      <div class="pay"><b>${e.k == 'z' ? '🏆 vs. ' + e.o : '⚽ Trénink'}</b><span class="pill ${e.x ? 'x' : e.k}">${e.x ? 'Zrušeno' : Util.date(e.d)}</span></div>
-      <div class="mut">${e.t} · ${e.pl}</div>
-      <div class="row" style="margin-top:8px">
-        ${e.k == 'z' && !e.x ? `<button class="btn" onclick="Events.toggleNomination('${e.id}')">Nominace (${(DB.nominations[e.id] || []).length})</button>` : ''}
-        ${e.k == 'z' && !e.x ? `<button class="btn" onclick="Events.toggleResult('${e.id}')">🏁 Výsledek</button>` : ''}
-        <button class="btn" onclick="Events.cancel(${e.id})">${e.x ? 'Obnovit' : 'Zrušit'}</button><button class="btn" style="flex:none;color:var(--r)" onclick="Events.remove(${e.id})">🗑 Smazat</button></div>
-      ${e.x ? '' : Attendance.coachCard(e, true)}${UI.nomEvent == e.id ? Events.nominationBox(e) : ''}${UI.resEvent == e.id ? Events.resultBox(e) : ''}</div>`).join('')}</div>${Events.form()}`;
+    const team = UI.user.team, list = Model.eventsOf(team).filter(e => e.k == 'z'), e = list.find(x => x.id == UI.matchEvent);
+    if (!e) {
+      UI.matchEvent = 0;
+      return `<h2 style="margin-top:0">Zápasy ${esc(team)}</h2><div class="g2">${list.map(m => {
+        const res = DB.results.find(r => r.tm == m.tm && r.o == m.o), noms = (DB.nominations[m.id] || []).length;
+        return `<div class="card ev ${m.x ? 'x' : 'z'}" style="cursor:pointer" onclick="Events.openMatch('${m.id}')">
+          <div class="pay"><b>🏆 vs. ${esc(m.o)}</b><span class="pill ${m.x ? 'x' : 'z'}">${m.x ? 'Zrušeno' : Util.date(m.d)}</span></div>
+          <div class="mut">${esc(m.t)} · 📍 ${esc(m.pl)}</div>
+          <div class="mut">${res ? '🏁 ' + res.s[0] + ':' + res.s[1] : noms ? 'Nominováno: ' + noms : 'Klepnutím otevřete zápas →'}</div></div>`;
+      }).join('') || '<div class="card mut">Tento týden zatím žádný zápas.</div>'}</div>${Events.form()}`;
+    }
+    return `<button class="btn" onclick="Events.closeMatch()">← Zápasy</button>
+      <h2>🏆 vs. ${esc(e.o)} · ${Util.date(e.d)} · ${esc(e.t)}</h2>
+      <div class="card ev ${e.x ? 'x' : e.k}"><div class="pay"><b>📍 ${esc(e.pl)}</b><span class="pill ${e.x ? 'x' : 'z'}">${e.x ? 'Zrušeno' : 'Zápas'}</span></div>
+        <div class="row" style="margin-top:8px">
+          ${!e.x ? `<button class="btn" onclick="Events.toggleNomination('${e.id}')">Nominace (${(DB.nominations[e.id] || []).length})</button>` : ''}
+          ${!e.x ? `<button class="btn" onclick="Events.toggleResult('${e.id}')">🏁 Výsledek</button>` : ''}
+          <button class="btn" onclick="Events.cancel(${e.id})">${e.x ? 'Obnovit' : 'Zrušit'}</button><button class="btn" style="flex:none;color:var(--r)" onclick="Events.remove(${e.id})">🗑 Smazat</button></div>
+        ${e.x ? '' : Attendance.coachCard(e, true)}${UI.nomEvent == e.id ? Events.nominationBox(e) : ''}${UI.resEvent == e.id ? Events.resultBox(e) : ''}</div>`;
   }
+  static openMatch(id) { UI.matchEvent = id; UI.nomEvent = 0; UI.resEvent = 0; App.render(); }
+  static closeMatch()  { UI.matchEvent = 0; UI.nomEvent = 0; UI.resEvent = 0; App.render(); }
 
   /** Formulář "+ Přidat zápas". */
   static form() {
@@ -1402,7 +1456,7 @@ class Roster {
         <div class="mut">Průměrná docházka ${avg} % · zdravotní poznámka u ${withHealth} hráčů</div></div>
       ${L.map(m => `<div class="card pcard" onclick="Roster.open('${m.id}')">${Util.avatar(m, 52)}
         <div class="pi"><b>${esc(m.full)}</b><div class="mut">#${m.no === '' ? '–' : m.no} · ${Util.age(m)}</div></div>
-        <div class="pr"><b class="${Model.attPct(m) < CONFIG.lowAttendance ? 'cr' : 'cg'}">${Model.attPct(m)} %</b><span class="mut" style="font-size:12px">${Model.attCount(m).join('/')}</span>${m.al || m.lim ? '<span title="Zdravotní poznámka">🩹</span>' : ''}</div></div>`).join('')}
+        <div class="pr"><b class="${Util.attCls(Model.attPct(m))}">${Model.attPct(m)} %</b><span class="mut" style="font-size:12px">${Model.attCount(m).join('/')}</span>${m.al || m.lim ? '<span title="Zdravotní poznámka">🩹</span>' : ''}</div></div>`).join('')}
       ${UI.addPlayer ? Roster.addForm() : `<button class="btn ok" style="width:100%" onclick="Roster.toggleAdd(true)">+ Přidat hráče</button>`}</div>`;
   }
 
@@ -1429,10 +1483,15 @@ class Roster {
 
       <!-- e) RYCHLÉ STATISTIKY -->
       <h2 style="margin-top:4px">📊 Rychlé statistiky</h2>
-      <div class="row">${[[ap + ' %','Docházka', ap < CONFIG.lowAttendance ? 'cr' : 'cg'], [m.mp,'Odehrané zápasy',''], [m.gl,'Vstřelené góly','']]
+      <div class="row">${[[ap + ' %','Docházka', Util.attCls(ap)], [m.mp,'Odehrané zápasy',''], [m.gl,'Vstřelené góly','']]
         .map(([v, l, c]) => `<div class="card stat"><b class="${c}">${v}</b><span class="mut">${l}</span></div>`).join('')}</div>
       <div class="row" style="margin:8px 0 10px"><button class="chip" onclick="Roster.bump('${id}','mp')">+ odehraný zápas</button><button class="chip" onclick="Roster.bump('${id}','gl')">⚽ + gól</button></div>
       <button class="chip" style="color:var(--r);margin-bottom:10px" onclick="Roster.remove('${id}')">🗑 Smazat hráče</button>
+
+      <!-- stálá absence na trénincích -->
+      <div class="card"><b>📅 Stálá absence na trénincích</b>
+        <div class="mut">Dny, kdy hráč pravidelně nemůže (např. každé úterý). U nových tréninků v ten den se předvyplní „Omluven“, u konkrétního tréninku to můžete opravit.</div>
+        <div class="row" style="margin-top:8px;flex-wrap:wrap">${CONFIG.days.map((d, i) => `<button class="chip ${(DB.pabs[id] || []).includes(i) ? 'on' : ''}" onclick="Roster.toggleAbs('${id}',${i})">${d}</button>`).join('')}</div></div>
 
       <!-- platby hráče (jen ke čtení – upravuje vedení) -->
       <div class="card"><div class="pay"><b>💳 Platby</b><span class="pill ${Model.debt(m) ? 'no' : 'ok'}">${Model.debt(m) ? 'Dluh ' + Model.debt(m) + ' Kč' : 'Vše zaplaceno'}</span></div>
@@ -1478,6 +1537,15 @@ class Roster {
   static open(id)  { UI.player = id; App.render(); }
   static close()   { UI.player = ''; App.render(); }
   /** Smaže hráče včetně docházky, plateb a vazeb na rodiče (rodičovské účty zůstanou). */
+  /** Zapne / vypne stálou absenci hráče v daný den týdne (databáze podle ní předvyplní budoucí tréninky). */
+  static async toggleAbs(id, day) {
+    const set = DB.pabs[id] = DB.pabs[id] || [], on = set.includes(day);
+    DB.pabs[id] = on ? set.filter(x => x != day) : [...set, day]; App.render();
+    const r = await Sync.write('Stálou absenci se nepodařilo uložit', on
+      ? sb.from('player_absence').delete().eq('player_id', id).eq('weekday', day)
+      : sb.from('player_absence').insert({player_id: id, weekday: day}));
+    if (r) { await Sync.loaders.events(); await Sync.loaders.attendance(); App.render(); }
+  }
   static async remove(id) {
     const m = Model.byId(id); if (!m) return;
     if (!confirm(`Smazat hráče ${m.full || m.n} (${m.t}) úplně? Smaže se i jeho docházka, platby a propojení na rodiče. Nelze vrátit.`)) return;
@@ -1629,26 +1697,38 @@ class Chat {
 class Dm {
   static roleLabel(c) { return c.role == 'c' ? 'Trenér ' + (c.team || '') : c.role == 'p' ? 'Rodič' : c.role == 'a' ? 'Správce' : 'Vedení'; }
 
+  /** Komu lze psát: seznam z databáze; kdyby se nenačetl, odvodí se z viditelných účtů (odeslání stejně hlídá databáze). */
+  static contacts() {
+    if (DB.dmContacts.length) return DB.dmContacts;
+    const u = UI.user; if (!u) return [];
+    const teamOf = id => (Model.byId(id) || {}).t;
+    const kidTeams = new Set(DB.links.filter(l => l.parent_id == u.id).map(l => teamOf(l.player_id)).filter(Boolean));
+    const parentsOf = t => new Set(DB.links.filter(l => teamOf(l.player_id) == t).map(l => l.parent_id));
+    return Object.values(DB.users).filter(x => x.id != u.id && (u.r == 'v' || u.r == 'a' ? true : u.r == 'c' ? (x.r != 'p' || parentsOf(u.team).has(x.id)) : (x.r == 'c' && kidTeams.has(x.team))))
+      .map(x => ({id: x.id, name: x.name, role: x.r, team: x.team})).sort((a, b) => a.name.localeCompare(b.name, 'cs'));
+  }
+
   static view(u) {
     if (UI.dmWith) return Dm.thread(u);
     const q = Util.norm(UI.dmSearch || ''), threads = Model.dmThreads(u), used = new Set(threads.map(t => t.id));
-    const info = id => DB.dmContacts.find(c => c.id == id) || (DB.users[id] ? {role: DB.users[id].r, team: DB.users[id].team} : null);
+    const info = id => Dm.contacts().find(c => c.id == id) || (DB.users[id] ? {role: DB.users[id].r, team: DB.users[id].team} : null);
     const rows = threads.filter(t => !q || Util.norm(t.name).includes(q)).map(t => {
       const c = info(t.id);
       return `<div class="card" style="cursor:pointer" onclick="Dm.open('${t.id}')"><div class="pay"><b>${esc(t.name)}</b>${Util.badge(t.unread)}</div>
         <div class="mut">${c ? esc(Dm.roleLabel(c)) + ' · ' : ''}${t.last.fid == u.id ? 'Vy: ' : ''}${esc(t.last.x.length > 60 ? t.last.x.slice(0, 60) + '…' : t.last.x)}</div></div>`;
     });
-    const fresh = DB.dmContacts.filter(c => !used.has(c.id) && (!q || Util.norm(c.name).includes(q))).map(c =>
+    const fresh = Dm.contacts().filter(c => !used.has(c.id) && (!q || Util.norm(c.name).includes(q))).map(c =>
       `<div class="card" style="cursor:pointer" onclick="Dm.open('${c.id}')"><div class="pay"><b>${esc(c.name)}</b><span class="pill z">Nová zpráva</span></div><div class="mut">${esc(Dm.roleLabel(c))}</div></div>`);
     return `<div class="col"><div class="card"><b>✉ Soukromé zprávy</b>
         <div class="mut">${u.r == 'p' ? 'Můžete napsat trenérům kategorie vašeho dítěte.' : u.r == 'c' ? 'Můžete psát ostatním trenérům i rodičům své kategorie.' : 'Můžete psát komukoli v klubu.'} Zprávu uvidí jen příjemce.</div>
+        ${DB.dmErr ? `<div class="warn" style="margin-top:6px">Seznam kontaktů z databáze se nenačetl (${esc(DB.dmErr)}). Spusťte v Supabase aktualizované SQL a obnovte stránku.</div>` : ''}
         <input id="dm-search" type="search" style="margin-top:8px" placeholder="🔍 Hledat podle jména…" value="${esc(UI.dmSearch || '')}" oninput="Dm.search(this.value)"></div>
       ${rows.join('')}${fresh.length ? `<h2 style="margin:6px 0 0">${rows.length ? 'Další lidé' : 'Komu napsat'}</h2>` + fresh.join('') : ''}
       ${rows.length || fresh.length ? '' : '<div class="card mut">Nikdo nenalezen.</div>'}</div>`;
   }
 
   static thread(u) {
-    const pid = UI.dmWith, t = Model.dmThreads(u).find(x => x.id == pid), c = DB.dmContacts.find(x => x.id == pid);
+    const pid = UI.dmWith, t = Model.dmThreads(u).find(x => x.id == pid), c = Dm.contacts().find(x => x.id == pid);
     const name = t ? t.name : c ? c.name : '(neznámý)', msgs = t ? t.msgs : [];
     if (t && t.last.id > (DB.seen['dm:' + pid] || 0)) Sync.setSeen('dm:' + pid, t.last.id);
     DB.notifs.forEach(n => { if (n.sub == 'dm' && n.by == pid && Notifs.forUser(n, u)) Notifs.markRead(n, u); });
@@ -2062,17 +2142,17 @@ class AttOverview {
       .sort((a, b) => a.p - b.p || a.m.t.localeCompare(b.m.t) || (a.m.full || a.m.n).localeCompare(b.m.full || b.m.n, 'cs'));
   }
   static view() {
-    const L = AttOverview.rows(), low = L.filter(r => r.p < CONFIG.lowAttendance).length, avg = L.length ? Math.round(L.reduce((a, r) => a + r.p, 0) / L.length) : 0;
+    const L = AttOverview.rows(), low = L.filter(r => r.p < CONFIG.attMid).length, avg = L.length ? Math.round(L.reduce((a, r) => a + r.p, 0) / L.length) : 0;
     return `<div class="col"><div class="card"><div class="pay"><b>📊 Docházka</b><span class="pill z">${L.length} hráčů</span></div>
-        <div class="mut">Průměrná účast ${avg} % · pod ${CONFIG.lowAttendance} %: ${low} hráčů</div>
+        <div class="mut">Průměrná účast ${avg} % · pod ${CONFIG.attMid} %: ${low} hráčů</div>
         <button class="btn" style="width:100%;margin-top:8px" onclick="AttOverview.export()">⬇ Export do Excelu</button></div>
       <input id="ov-search" type="search" placeholder="🔍 Hledat hráče…" value="${esc(UI.ovSearch)}" oninput="AttOverview.search(this.value)">
       <div class="row" style="margin:6px 0">${['all', ...CONFIG.planner.teams].map(t => `<button class="chip ${UI.ovTeam == t ? 'on' : ''}" onclick="AttOverview.team('${Util.q(t)}')">${t == 'all' ? 'Všechny kategorie' : esc(t)}</button>`).join('')}</div>
       ${L.map(r => `<div class="card"><div style="display:flex;gap:10px;align-items:center">${Util.avatar(r.m, 36)}
           <div style="flex:1;min-width:0"><b>${esc(r.m.full || r.m.n)}</b> <span class="mut">${esc(r.m.t)}</span>
-            <div class="bar" style="margin-top:4px"><i style="width:${r.p}%;background:${r.p < CONFIG.lowAttendance ? 'var(--y)' : 'var(--g)'}"></i></div></div>
-          <div style="text-align:right"><b class="${r.p < CONFIG.lowAttendance ? 'cr' : 'cg'}">${r.p} %</b><div class="mut">${r.ps}/${r.tt}</div></div></div></div>`).join('') || '<div class="card mut">Nikdo nenalezen.</div>'}
-      ${AttOverview.coaches()}${AttImport.view()}</div>`;
+            <div class="bar" style="margin-top:4px"><i style="width:${r.p}%;background:${Util.attBg(r.p)}"></i></div></div>
+          <div style="text-align:right"><b class="${Util.attCls(r.p)}">${r.p} %</b><div class="mut">${r.ps}/${r.tt}</div></div></div></div>`).join('') || '<div class="card mut">Nikdo nenalezen.</div>'}
+      ${AttOverview.coaches()}</div>`;
   }
   /** Docházka trenérů (podle potvrzení „přijdu“ / „nemohu“ a importu). */
   static coaches() {
@@ -2080,8 +2160,8 @@ class AttOverview {
       .map(x => ({x, st: Model.coachStats(x.id)})).sort((a, b) => a.st.pct - b.st.pct);
     if (!L.length) return '';
     return `<h2>🧢 Trenéři</h2>` + L.map(({x, st}) => `<div class="card"><div style="display:flex;gap:10px;align-items:center"><div style="flex:1;min-width:0"><b>${esc(x.name)}</b> <span class="mut">${esc(x.team)}</span>
-      <div class="bar" style="margin-top:4px"><i style="width:${st.pct}%;background:${st.pct < CONFIG.lowAttendance ? 'var(--y)' : 'var(--g)'}"></i></div></div>
-      <div style="text-align:right"><b class="${st.pct < CONFIG.lowAttendance ? 'cr' : 'cg'}">${st.pct} %</b><div class="mut">${st.p}/${st.t}</div></div></div></div>`).join('');
+      <div class="bar" style="margin-top:4px"><i style="width:${st.pct}%;background:${Util.attBg(st.pct)}"></i></div></div>
+      <div style="text-align:right"><b class="${Util.attCls(st.pct)}">${st.pct} %</b><div class="mut">${st.p}/${st.t}</div></div></div></div>`).join('');
   }
   static team(t) { UI.ovTeam = t; App.render(); }
   static search(v) { UI.ovSearch = v; App.render(); const i = $('#ov-search'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
@@ -2193,12 +2273,12 @@ class KidProfile {
       <div class="card" style="display:flex;gap:14px;align-items:center">${Util.avatar(m, 72)}
         <div style="min-width:0"><b style="font-size:19px">${esc(m.full || m.n)}</b><div class="mut">Kategorie ${esc(m.t)}${m.no !== '' ? ' · dres č. ' + esc(m.no) : ''}</div></div></div>
       <h2 style="margin:4px 0">📊 Statistiky</h2>
-      <div class="row">${[[pct + ' %', 'Docházka', pct < CONFIG.lowAttendance ? 'cr' : 'cg'], [m.mp, 'Odehrané zápasy', ''], [m.gl, 'Vstřelené góly', '']]
+      <div class="row">${[[pct + ' %', 'Docházka', Util.attCls(pct)], [m.mp, 'Odehrané zápasy', ''], [m.gl, 'Vstřelené góly', '']]
         .map(([v, l, c]) => `<div class="card stat"><b class="${c}">${v}</b><span class="mut">${l}</span></div>`).join('')}</div>
       <div class="card"><b>🧾 Základní údaje</b>
         ${row('Jméno', esc(m.full || m.n))}${row('Kategorie', esc(m.t))}${row('Číslo dresu', m.no === '' ? '—' : esc(m.no))}${row('Ročník narození', m.by === '' ? '—' : esc(m.by))}
         <div class="pl"><span class="mut">Zdravotní prohlídka</span><span class="pill ${doc[1]}">${doc[0]}</span></div></div>
-      <div class="card"><div class="pay"><b>🗓 Docházka na tréninky</b><span class="pill ${pct < CONFIG.lowAttendance ? 'no' : 'ok'}">${ps} z ${tt}</span></div>
+      <div class="card"><div class="pay"><b>🗓 Docházka na tréninky</b><span class="pill ${Util.attPill(pct)}">${ps} z ${tt}</span></div>
         <div class="row" style="margin-top:8px"><div class="card stat"><b class="cg">${ps}</b><span class="mut">Přítomen</span></div>
           <div class="card stat"><b class="cw">${exc.length}</b><span class="mut">Omluven</span></div>
           <div class="card stat"><b class="cr">${unx.length}</b><span class="mut">Neomluven</span></div></div>
@@ -2372,6 +2452,56 @@ class AttImport {
 
 
 /* ---------------------------------------------------------------------
+   Settings – záložka „Nastavení“ (všechny role): upozornění, export statistik do Excelu, import docházky
+   --------------------------------------------------------------------- */
+class Settings {
+  static CATS = [['chat', '💬 Chat týmu'], ['dm', '✉ Soukromé zprávy'], ['club', '📢 Zprávy od vedení'], ['ev', '📅 Tréninky a zápasy (nové, zrušené, výsledky, omluvy)'], ['pay', '💳 Platby a dokumenty']];
+  static msg(t, ok) { UI.setMsg = t; UI.setOk = !!ok; App.render(); }
+
+  static view() {
+    const u = UI.user, P = DB.prefs || {}, on = k => P[k] !== false, all = on('all');
+    const cats = Settings.CATS.filter(([k]) => !(k == 'chat' && u.r == 'v') && !(k == 'pay' && u.r == 'c'));
+    return `<div class="col">
+      <div class="card"><b>🔔 Upozornění</b>
+        ${Push.profileBlock()}
+        <div style="margin-top:10px;border-top:1px solid var(--bd);padding-top:8px"><b>Co mi má přijít do telefonu</b>
+          <label class="pl"><span>Upozornění zapnutá</span><input type="checkbox" ${all ? 'checked' : ''} onchange="Settings.pref('all',this.checked)"></label>
+          ${cats.map(([k, l]) => `<label class="pl" style="${all ? '' : 'opacity:.5'}"><span>${l}</span><input type="checkbox" ${on(k) ? 'checked' : ''} ${all ? '' : 'disabled'} onchange="Settings.pref('${k}',this.checked)"></label>`).join('')}
+          <div class="mut" style="margin-top:6px">Týká se upozornění do telefonu. Zvonek v aplikaci zobrazuje vše.</div></div>
+        ${UI.setMsg ? `<div class="${UI.setOk ? 'cg' : 'warn'}" style="margin-top:8px">${esc(UI.setMsg)}</div>` : ''}</div>
+      <div class="card"><b>📤 Export statistik do Excelu</b>
+        <div class="mut">${u.r == 'p' ? 'Docházka a statistiky vašeho dítěte.' : u.r == 'c' ? 'Docházka hráčů a trenérů vaší kategorie a výsledky zápasů.' : 'Docházka hráčů a trenérů všech kategorií a výsledky zápasů.'}</div>
+        <button class="btn ok" style="width:100%;margin-top:8px" onclick="Settings.export()">⬇ Stáhnout Excel</button></div>
+      ${u.r == 'p' ? '' : AttImport.view()}</div>`;
+  }
+
+  static async pref(k, v) {
+    DB.prefs = Object.assign({}, DB.prefs, {[k]: v}); App.render();
+    const r = await sb.from('user_prefs').upsert({user_id: UI.user.id, notif: DB.prefs}, {onConflict: 'user_id'});
+    if (r.error) Settings.msg('⚠ Nastavení se nepodařilo uložit' + (/relation|user_prefs/.test(r.error.message) ? ' – nejdřív spusťte aktualizované SQL v Supabase.' : '.'));
+  }
+
+  static export() {
+    if (!window.XLSX) return Settings.msg('⚠ Knihovnu pro Excel se nepodařilo načíst.');
+    const u = UI.user, wb = XLSX.utils.book_new();
+    const mem = u.r == 'p' ? (u.kids || []).map(n => Model.member(n)).filter(Boolean) : u.r == 'c' ? Model.membersOf(u.team) : DB.members.slice();
+    const teams = new Set(mem.map(m => m.t));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(mem.map(m => { const [ps, tt] = Model.attCount(m);
+      return {'Hráč': m.full || m.n, 'Kategorie': m.t, 'Číslo dresu': m.no, 'Účast (tréninky)': ps, 'Počet tréninků': tt, 'Účast %': Model.attPct(m), 'Odehrané zápasy': m.mp, 'Góly': m.gl}; })), 'Hráči');
+    if (u.r != 'p') {
+      const co = Object.values(DB.users).filter(x => x.r == 'c' && (u.r != 'c' || x.team == u.team)).map(x => { const st = Model.coachStats(x.id);
+        return {'Trenér': x.name, 'Kategorie': x.team, 'Účast (tréninky)': st.p, 'Počet tréninků': st.t, 'Účast %': st.pct}; });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(co), 'Trenéři');
+    }
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(DB.results.filter(r => teams.has(r.tm)).map(r => ({'Kategorie': r.tm, 'Datum': r.d, 'Soupeř': r.o, 'Doma': r.h ? 'ano' : 'ne',
+      'Skóre': r.s[0] + ':' + r.s[1], 'Střelci': Object.entries(r.g || {}).map(([n, c]) => n + (c > 1 ? ' ' + c + '×' : '')).join(', ')}))), 'Zápasy');
+    XLSX.writeFile(wb, 'statistiky-' + Util.iso(new Date()) + '.xlsx');
+    Settings.msg('✔ Excel stažen.', true);
+  }
+}
+
+
+/* ---------------------------------------------------------------------
    Push – instalace do telefonu (service worker) a push notifikace mimo aplikaci
    Zapíná se v „Můj profil“. Veřejný klíč VAPID se bere ze serveru (settings.vapid_public); není-li nastaven,
    push se nenabízí. Odběr zařízení se ukládá do push_subscriptions (každý jen svůj).
@@ -2407,21 +2537,22 @@ class Push {
       ${denied ? '' : `<button class="btn ${Push.on ? '' : 'ok'}" type="button" style="width:100%;margin-top:6px" onclick="Push.toggle()">${Push.on ? 'Vypnout na tomto zařízení' : 'Zapnout upozornění'}</button>`}</div>`;
   }
 
+  static say(t, ok) { UI.setMsg = t; UI.setOk = !!ok; Profile.msg(t, ok); }
   static async toggle() {
     try {
       const reg = await navigator.serviceWorker.ready, old = await reg.pushManager.getSubscription();
       if (old) {                                                    // vypnout
         await sb.from('push_subscriptions').delete().eq('endpoint', old.endpoint);
-        await old.unsubscribe(); Push.on = false; return Profile.msg('Upozornění na tomto zařízení vypnuta.', true);
+        await old.unsubscribe(); Push.on = false; return Push.say('Upozornění na tomto zařízení vypnuta.', true);
       }
       const { data: key } = await sb.rpc('push_public_key');
-      if (!key) return Profile.msg('Upozornění zatím nejsou na serveru nastavena (správce musí doplnit klíč).');
-      if (await Notification.requestPermission() != 'granted') { Push.on = false; return Profile.msg('Upozornění nebyla povolena.'); }
+      if (!key) return Push.say('Upozornění zatím nejsou na serveru nastavena (správce musí doplnit klíč).');
+      if (await Notification.requestPermission() != 'granted') { Push.on = false; return Push.say('Upozornění nebyla povolena.'); }
       const sub = await reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: Push.b64(key)}), j = sub.toJSON();
       const { error } = await sb.from('push_subscriptions').upsert({user_id: UI.user.id, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth}, {onConflict: 'endpoint'});
       if (error) throw error;
-      Push.on = true; Profile.msg('✔ Upozornění zapnuta.', true);
-    } catch (e) { Profile.msg('⚠ ' + (e.message || e)); }
+      Push.on = true; Push.say('✔ Upozornění zapnuta.', true);
+    } catch (e) { Push.say('⚠ ' + (e.message || e)); }
   }
 }
 
@@ -2597,24 +2728,27 @@ const TABS = {
   p: [ {id:'cal',  label:'📅 Přehled',              view:() => Calendar.view()},
        {id:'chat', label:'💬 Chat',                 view:() => Chat.view()},
        {id:'kid',  label:'🧒 Hráč',                 view:() => KidProfile.view()},
-       {id:'pay',  label:'💳 Dokumenty & platby',   view:() => Payments.parentView()} ],
+       {id:'pay',  label:'💳 Dokumenty & platby',   view:() => Payments.parentView()},
+       {id:'set',  label:'⚙ Nastavení',            view:() => Settings.view()} ],
   c: [ {id:'att',  label:'⚽ Tréninky',             view:() => Attendance.view()},
        {id:'ev',   label:'🏆 Zápasy',               view:() => Events.view()},
        {id:'plan', label:'🏟 Rozvrh hřiště',        view:() => Planner.view()},
        {id:'chat', label:'💬 Chat',                 view:() => Chat.view()},
        {id:'ros',  label:'👥 Soupiska',             view:() => Roster.view()},
        {id:'par',  label:'👪 Rodiče',               view:() => Parents.view()},
-       {id:'no',   label:'📝 Poznámky',             view:() => Notes.view()} ],
+       {id:'no',   label:'📝 Poznámky',             view:() => Notes.view()},
+       {id:'set',  label:'⚙ Nastavení',            view:() => Settings.view()} ],
   v: [ {id:'plan', label:'🏟 Plánovač',             view:() => Planner.view()},
        {id:'pay',  label:'💳 Platby',               view:() => Payments.managementView()},
        {id:'ovr',  label:'📊 Docházka',             view:() => AttOverview.view()},
        {id:'msg',  label:'✉ Zprávy',                view:() => Messages.view()},
        {id:'usr',  label:'👥 Uživatelé',            view:() => Users.view()},
-       {id:'adm',  label:'⚙ Správa',                view:() => Admin.view()} ]
+       {id:'adm',  label:'🛠 Správa',               view:() => Admin.view()},
+       {id:'set',  label:'⚙ Nastavení',            view:() => Settings.view()} ]
 };
 
 /* Správce = vedení + všechny trenérské záložky (za kategorii vybranou v hlavičce) */
-TABS.a = [...TABS.v, ...TABS.c.filter(t => t.id != 'plan')];
+TABS.a = [...TABS.v.filter(t => t.id != 'set'), ...TABS.c.filter(t => t.id != 'plan' && t.id != 'set'), TABS.v.find(t => t.id == 'set')];
 
 class App {
   /** Vykreslí celou stránku (přihlašovací obrazovku, nebo hlavičku + záložky + obsah). */

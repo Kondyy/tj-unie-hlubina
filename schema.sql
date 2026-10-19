@@ -465,7 +465,9 @@ $$ declare url text; sec text; ids uuid[]; begin
   select value into url from public.app_config where key = 'push_url';
   select value into sec from public.app_config where key = 'push_secret';
   if coalesce(url, '') = '' then return new; end if;
-  select array_agg(x) into ids from public.notif_recipients(new) x;
+  select array_agg(x) into ids from public.notif_recipients(new) x
+    where not exists (select 1 from public.user_prefs up where up.user_id = x
+      and (up.notif ->> 'all' = 'false' or up.notif ->> public.notif_cat(new.tab, new.sub) = 'false'));
   if ids is null then return new; end if;
   perform net.http_post(url := url,
     headers := jsonb_build_object('Content-Type', 'application/json', 'x-push-secret', coalesce(sec, '')),
@@ -646,7 +648,7 @@ create or replace function public.attendance_guard() returns trigger
 language plpgsql security definer set search_path = public as
 $$ begin
   new.updated_at := now();
-  if public.app_role() = 'p' then
+  if public.app_role() = 'p' and coalesce(current_setting('app.skip_guard', true), '') <> '1' then
     if tg_op = 'INSERT' then new.state := null; else new.state := old.state; end if;
   end if;
   return new;
@@ -801,6 +803,72 @@ create policy nread_insert on public.notification_reads for insert to authentica
 create policy rs_all on public.read_state for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 
+
+-- ---------------------------------------------------------------------
+-- Nastavení uživatele (upozornění) a stálá absence hráčů
+-- ---------------------------------------------------------------------
+create table if not exists public.user_prefs (
+  user_id uuid primary key default auth.uid() references public.profiles(id) on delete cascade,
+  notif   jsonb not null default '{}'::jsonb          -- např. {"all":true,"chat":false} – false = nechci upozornění
+);
+alter table public.user_prefs enable row level security;
+create policy prefs_own on public.user_prefs for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- Druh upozornění (pro nastavení): dm soukromé zprávy · club zprávy vedení · chat týmu · pay platby · ev tréninky a zápasy
+create or replace function public.notif_cat(t text, s text) returns text
+language sql immutable as
+$$ select case when s = 'dm' then 'dm' when s = 'club' then 'club' when t = 'chat' then 'chat'
+               when t = 'pay' then 'pay' when t in ('cal', 'att') then 'ev' else 'other' end $$;
+
+-- Stálá absence: hráč, který pravidelně nemůže v určitý den (0 = pondělí … 6 = neděle). Tréninky v ten den dostanou „Omluven“.
+create table if not exists public.player_absence (
+  player_id  uuid     not null references public.players(id) on delete cascade,
+  weekday    smallint not null check (weekday between 0 and 6),
+  created_by uuid default auth.uid(),
+  primary key (player_id, weekday)
+);
+alter table public.player_absence enable row level security;
+create policy pabs_select on public.player_absence for select to authenticated using (public.can_see_player(player_id));
+create policy pabs_write  on public.player_absence for all to authenticated
+  using (public.is_mgmt() or (public.app_role() = 'c' and exists (select 1 from public.players p where p.id = player_id and p.team = public.app_team())))
+  with check (public.is_mgmt() or (public.app_role() = 'c' and exists (select 1 from public.players p where p.id = player_id and p.team = public.app_team())));
+
+-- Nový trénink → hráčům se stálou absencí v ten den se předvyplní „Omluven“ (trenér to může opravit)
+create or replace function public.events_apply_absence() returns trigger
+language plpgsql security definer set search_path = public as
+$$ begin
+  if new.kind = 't' then
+    perform set_config('app.skip_guard', '1', true);
+    insert into public.attendance (event_id, player_id, state)
+      select new.id, pa.player_id, 'O' from public.player_absence pa join public.players pl on pl.id = pa.player_id
+       where pl.team = new.team and pa.weekday = extract(isodow from new.event_date)::int - 1
+      on conflict (event_id, player_id) do nothing;
+  end if;
+  return new;
+end $$;
+drop trigger if exists events_apply_absence on public.events;
+create trigger events_apply_absence after insert on public.events for each row execute function public.events_apply_absence();
+
+-- Nastavení / zrušení stálé absence se propíše do budoucích tréninků (ručně upravené záznamy se nemění)
+create or replace function public.pabs_after_change() returns trigger
+language plpgsql security definer set search_path = public as
+$$ begin
+  perform set_config('app.skip_guard', '1', true);
+  if tg_op = 'INSERT' then
+    insert into public.attendance (event_id, player_id, state)
+      select e.id, new.player_id, 'O' from public.events e join public.players pl on pl.id = new.player_id and pl.team = e.team
+       where e.kind = 't' and not e.cancelled and e.event_date >= current_date and extract(isodow from e.event_date)::int - 1 = new.weekday
+      on conflict (event_id, player_id) do nothing;
+    return new;
+  end if;
+  delete from public.attendance a using public.events e
+   where a.event_id = e.id and a.player_id = old.player_id and e.kind = 't' and e.event_date >= current_date
+     and extract(isodow from e.event_date)::int - 1 = old.weekday and a.state = 'O' and a.response is null and a.reason is null and a.note is null;
+  return old;
+end $$;
+drop trigger if exists pabs_after_change on public.player_absence;
+create trigger pabs_after_change after insert or delete on public.player_absence for each row execute function public.pabs_after_change();
+
 -- ---------------------------------------------------------------------
 -- 5. OPRÁVNĚNÍ ROLÍ (RLS je filtruje; anon nemá k datům přístup)
 -- ---------------------------------------------------------------------
@@ -819,7 +887,7 @@ revoke execute on function public.handle_new_user(), public.sync_user_email() fr
 -- ---------------------------------------------------------------------
 do $$ declare t text; begin
   foreach t in array array['chat_messages','attendance','notifications','events','club_messages','plan',
-                           'nominations','player_payments','players','parent_players','profiles','results','teams','settings','direct_messages','coach_attendance']
+                           'nominations','player_payments','players','parent_players','profiles','results','teams','settings','direct_messages','coach_attendance','player_absence']
   loop
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
