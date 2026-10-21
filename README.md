@@ -69,3 +69,7 @@ Rodič vidí v záložce Přehled úplně dole jména trenérů kategorie svého
 
 ### Nominace zápasu a omluvy
 Trenér v detailu zápasu vybere hráče a klepne na „Potvrdit nominaci“: nominace se uzavře (hráče nelze měnit, dokud ji trenér znovu neotevře) a rodiče nominovaných dostanou upozornění. Rodič u zápasu vidí „Nominován(a)“ / „Nenominován(a)“; trenér pod zápasem vidí, kdo z nominovaných účast potvrdil, kdo se omluvil (s důvodem) a kdo ještě nereagoval. U tréninků se omluva rodiče hráči automaticky zapíše jako „Omluven“ i s důvodem. Vyžaduje znovu spustit `schema.sql`.
+
+### Omluva na delší dobu a kalendář
+- **Omluva na delší dobu:** rodič (na Přehledu) nebo trenér (v detailu hráče) zadá období od–do a důvod. Všechny tréninky a zápasy hráče v něm se automaticky omluví (u tréninků „Omluven“), i ty, které trenér přidá později. Zrušením omluvy se vrátí jen to, co vzniklo automaticky.
+- **Kalendář v telefonu:** Nastavení → Kalendář v telefonu → Vytvořit odkaz. Odkaz (ICS) obsluhuje edge funkce `calendar` (`calendar-edge-function.ts`, nasazená **bez** Verify JWT; ochrana je tajný token z tabulky `calendar_tokens`, v Nastavení ho lze vyměnit). Vyžaduje znovu spustit `schema.sql`.
