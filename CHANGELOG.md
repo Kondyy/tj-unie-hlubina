@@ -10,6 +10,14 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ## 21. 10. 2026 (večer 4)
 
+### Automatické mazání chatu
+- Zprávy v **chatu kategorie** a v **chatu trenérů** se po nastavené době samy smažou (výchozí 30 dní).
+- Trenér si délku nastaví v **⚙ Nastavení → 🗑 Mazání chatu** (7 dní až 1 rok, nebo Nemazat). Platí pro celou kategorii, smí ji měnit jen trenér kategorie nebo vedení (kontroluje databáze).
+- Mazání běží každou noc v Supabase (pg_cron, bezplatný tarif). Starší zprávy aplikace skryje hned.
+- Soukromé zprávy a zprávy od klubu se nemažou.
+
+**Supabase:** už je nasazeno (při dalším spuštění `schema.sql` se nic nezdvojí).
+
 ### Nastavení: jedno upozornění místo dvou
 - Karta **Upozornění** v Nastavení měla dva nadpisy („Upozornění“ a „Upozornění v telefonu“) a navíc zaškrtávátko „Upozornění zapnutá“, které dělalo totéž co tlačítko. Teď je jedna karta **🔔 Upozornění v telefonu**: tlačítko Zapnout/Vypnout a pod ním výběr, co má chodit.
 - Kdo měl dřív „Upozornění zapnutá“ vypnuté, má po zapnutí tlačítka nebo změně kteréhokoli výběru upozornění zase povolená.

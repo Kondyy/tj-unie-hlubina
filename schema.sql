@@ -566,6 +566,35 @@ create trigger chat_after_insert after insert on public.chat_messages
   for each row execute function public.chat_after_insert();
 
 -- ---------------------------------------------------------------------
+-- Automatické mazání starých zpráv chatu kategorie (i interního chatu trenérů 'T-U9').
+-- Délku nastaví trenér kategorie (nebo vedení) v aplikaci v Nastavení; 0 = nemazat.
+-- Mazání běží každou noc přes pg_cron (je i v bezplatném tarifu Supabase).
+-- ---------------------------------------------------------------------
+alter table public.teams add column if not exists chat_days int not null default 30 check (chat_days between 0 and 365);
+
+create or replace function public.purge_chats() returns int
+language plpgsql security definer set search_path = public as
+$$ declare n int; begin
+  delete from public.chat_messages m using public.teams t
+    where (m.team = t.name or m.team = 'T-' || t.name) and t.chat_days > 0
+      and m.created_at < now() - make_interval(days => t.chat_days);
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+create or replace function public.set_chat_days(t text, d int) returns void
+language plpgsql security definer set search_path = public as
+$$ begin
+  if not (public.is_mgmt() or (public.app_role() = 'c' and public.app_team() = t)) then raise exception 'Délku mazání chatu smí měnit jen trenér kategorie nebo vedení.'; end if;
+  if d not in (0, 7, 14, 30, 60, 90, 180, 365) then raise exception 'Neplatná délka mazání chatu.'; end if;
+  update public.teams set chat_days = d where name = t;
+  perform public.purge_chats();
+end $$;
+
+create extension if not exists pg_cron;
+select cron.schedule('purge-old-chats', '15 2 * * *', 'select public.purge_chats()');   -- každou noc ve 2:15 UTC
+
+-- ---------------------------------------------------------------------
 -- Soukromé zprávy (jeden na jednoho): trenér ↔ trenér, trenér ↔ rodiče své kategorie, vedení/správce ↔ kdokoli.
 -- Rodič smí psát jen trenérům kategorie svého dítěte (a odpovídat tomu, kdo mu napsal).
 -- ---------------------------------------------------------------------
