@@ -825,7 +825,7 @@ create policy prefs_own on public.user_prefs for all to authenticated using (use
 
 -- Druh upozornění (pro nastavení): dm soukromé zprávy · club zprávy vedení · chat týmu · pay platby · ev tréninky a zápasy
 create or replace function public.notif_cat(t text, s text) returns text
-language sql immutable as
+language sql immutable set search_path = public as
 $$ select case when s = 'dm' then 'dm' when s = 'club' then 'club' when t = 'chat' then 'chat'
                when t = 'pay' then 'pay' when t in ('cal', 'att') then 'ev' else 'other' end $$;
 
@@ -901,6 +901,16 @@ revoke all on public.app_config from authenticated;
 revoke execute on all functions in schema public from public, anon;
 grant execute on all functions in schema public to authenticated;
 revoke execute on function public.handle_new_user(), public.sync_user_email() from public, anon, authenticated;
+-- Zpřísnění: TRUNCATE obchází RLS a REFERENCES/TRIGGER přihlášený nepotřebuje; triggerové funkce nejdou volat přes API
+revoke truncate, references, trigger on all tables in schema public from authenticated, anon;
+revoke all on public.events_skip from authenticated;
+do $$ declare r record; begin
+  for r in select p.oid::regprocedure as f from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.prorettype = 'trigger'::regtype
+  loop execute format('revoke execute on function %s from public, anon, authenticated', r.f); end loop;
+end $$;
+alter default privileges in schema public revoke execute on functions from public, anon;
+alter default privileges in schema public revoke truncate, references, trigger on tables from anon, authenticated;
 
 
 -- ---------------------------------------------------------------------
