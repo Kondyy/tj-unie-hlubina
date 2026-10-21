@@ -519,7 +519,7 @@ class Model {
   }
   /** Součty z celé zaznamenané docházky hráče: {p: přítomen, o: omluven, n: neomluven, t: celkem}. */
   static attStates(m) {
-    const r = {p: m.a[0], o: 0, n: 0, t: m.a[1]};
+    const r = {p: m.a[0], o: Math.max(0, m.a[1] - m.a[0]), n: 0, t: m.a[1]};          // starší historie nezná důvod absence → počítá se jako omluvená
     Object.entries(DB.att).forEach(([k, v]) => { if (k.slice(k.indexOf('|') + 1) != m.n) return; r.t++; if (v == 'P') r.p++; else if (v == 'O') r.o++; else if (v == 'N') r.n++; });
     return r;
   }
@@ -2663,7 +2663,7 @@ class KidProfile {
           <div class="card stat"><b class="cr">${s.n}</b><span class="mut">Neomluven</span></div></div>
         ${absent.length ? `<div style="margin-top:10px"><b>Absence tento týden</b>${absent.map(([e, st]) => `<div class="pl"><span>${e.k == 'z' ? '🏆 Zápas' : '⚽ Trénink'} · ${Util.date(e.d)}</span><span class="pill ${st == 'O' ? 'wa' : 'no'}">${st == 'O' ? 'omluven' : 'neomluven'}</span></div>`).join('')}</div>`
           : '<div class="mut" style="margin-top:8px">Tento týden žádná absence. 👍</div>'}
-        <div class="mut" style="margin-top:8px">Docházku značí trenér na tréninku. Součty zahrnují všechny zaznamenané akce, procenta i dřívější tréninky.</div></div>`;
+        <div class="mut" style="margin-top:8px">Docházku značí trenér na tréninku. Součty zahrnují i dřívější tréninky; absence ze starší historie se počítají jako omluvené.</div></div>`;
   }
   static view() {
     const m = Model.member(UI.kid);
