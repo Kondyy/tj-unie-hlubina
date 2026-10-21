@@ -306,7 +306,7 @@ const CONFIG = {
    ===================================================================== */
 const DB = {
   users: {}, members: [], docs: {}, events: [], results: [], payItems: [], plan: [], messages: [],
-  chats: {}, notifs: [], links: [], settings: {}, dm: [], dmContacts: [], tcoaches: [], dmErr: '', pabs: {}, prefs: {},
+  chats: {}, notifs: [], links: [], settings: {}, dm: [], dmContacts: [], tcoaches: [], aper: [], calTok: undefined, dmErr: '', pabs: {}, prefs: {},
   att: {},          // docházka:        "idUdálosti|jménoHráče"  → 'P' | 'O' | 'N'
   coachEv: {},      // druh a datum události u účasti trenéra: "idTrenéra|idUdálosti" → {k:'t', d:'2026-10-12'}
   coachNm: {},      // příjmení trenéra u jeho účasti: "idTrenéra|idUdálosti" → 'Kondaš'
@@ -633,9 +633,9 @@ class Auth {
   /** Vyčistí paměť aplikace a vrátí přihlašovací obrazovku. */
   static reset() {
     Sync.stop();
-    Object.assign(DB, {users:{}, members:[], docs:{}, events:[], results:[], payItems:[], plan:[], messages:[], chats:{}, notifs:[], links:[], settings:{}, dm:[], dmContacts:[], tcoaches:[],
+    Object.assign(DB, {users:{}, members:[], docs:{}, events:[], results:[], payItems:[], plan:[], messages:[], chats:{}, notifs:[], links:[], settings:{}, dm:[], dmContacts:[], tcoaches:[], aper:[], calTok:undefined,
                        att:{}, coachAtt:{}, coachNm:{}, coachEv:{}, nominations:{}, carpool:{}, responses:{}, notes:{}, seen:{}});
-    UI.user = null; UI.asTeam = ''; UI.imp = null; UI.recovery = false; UI.more = false; UI.bell = false; UI.modal = null; UI.profile = false; UI.profMsg = ''; UI.pkSel = {}; UI.player = ''; UI.boot = false; UI.kid = ''; UI.editUser = ''; UI.dmWith = ''; UI.dmSearch = ''; UI.ai = null;
+    UI.user = null; UI.asTeam = ''; UI.imp = null; UI.recovery = false; UI.more = false; UI.bell = false; UI.modal = null; UI.profile = false; UI.profMsg = ''; UI.pkSel = {}; UI.player = ''; UI.boot = false; UI.kid = ''; UI.editUser = ''; UI.dmWith = ''; UI.dmSearch = ''; UI.ai = null; UI.calTok = undefined; UI.calMsg = '';
     UI.skipKeep = ['lg-pass', 'lg-email'];
     App.render();
   }
@@ -823,6 +823,11 @@ class Sync {
         DB.dmContacts = Array.isArray(c.data) ? c.data : [];
       } catch (e) { DB.dmContacts = []; DB.dmErr = String((e && e.message) || e); }
     },
+    /** Omluvy na delší dobu (od–do). Když tabulka ještě není, zůstane prázdné. */
+    aper: async () => {
+      const { data, error } = await sb.from('absence_periods').select('*').order('date_from');
+      DB.aper = (!error && data) ? data.map(r => ({id: r.id, pid: r.player_id, from: r.date_from, to: r.date_to, reason: r.reason || '', note: r.note || ''})) : [];
+    },
     /** Kontakty na trenéry kategorií dítěte (jen rodič; bez funkce v databázi zůstane prázdné). */
     tcoaches: async () => {
       try { const c = await sb.rpc('team_coaches'); DB.tcoaches = !c.error && Array.isArray(c.data) ? c.data : []; }
@@ -860,7 +865,7 @@ class Sync {
   /** Která tabulka při změně znovu načte které části paměti. */
   static watch = {
     teams: ['teams'], settings: ['settings'], events: ['events'], results: ['results'], plan: ['plan'], nominations: ['noms'], club_messages: ['club'], notifications: ['notifs'],
-    coach_attendance: ['coach'], direct_messages: ['dm'], player_absence: ['pabs'], user_prefs: ['prefs'], players: ['players', 'people'], player_payments: ['players'], parent_players: ['people'], profiles: ['people', 'tcoaches']
+    coach_attendance: ['coach'], direct_messages: ['dm'], player_absence: ['pabs'], user_prefs: ['prefs'], absence_periods: ['aper'], players: ['players', 'people'], player_payments: ['players'], parent_players: ['people'], profiles: ['people', 'tcoaches']
   };
 
   static subscribe() {
@@ -999,6 +1004,49 @@ class Sync {
    ===================================================================== */
 
 /* ---------------------------------------------------------------------
+   Absence – omluva na delší dobu (od–do): tréninky a zápasy v období se hráči automaticky omluví
+   --------------------------------------------------------------------- */
+class Absence {
+  /** Karta s formulářem a seznamem omluv jednoho hráče (rodič svého dítěte, trenér hráče své kategorie). */
+  static card(kid, open) {
+    const m = Model.member(kid); if (!m) return '';
+    const today = Util.iso(new Date()), L = DB.aper.filter(a => a.pid == m.id && a.to >= today);
+    return `<details class="card" ${open || UI.apOpen || L.length ? 'open' : ''} ontoggle="UI.apOpen=this.open"><summary><b>🩹 Omluva na delší dobu</b>${L.length ? ` <span class="pill wa">${L.length}</span>` : ''}</summary>
+      <div class="mut" style="margin-top:6px">Nemoc, dovolená, zranění… Všechny tréninky a zápasy v období se ${esc(kid)} automaticky omluví (včetně těch, které trenér teprve přidá).</div>
+      ${L.map(a => `<div class="pay" style="margin-top:6px"><span>${Util.short(a.from)} – ${Util.short(a.to)} · ${esc(a.reason || '—')}${a.note ? ' (' + esc(a.note) + ')' : ''}</span>
+        <button class="btn no" style="flex:none" onclick="Absence.remove(${a.id})">✕ Zrušit</button></div>`).join('')}
+      <div class="row" style="margin-top:8px"><label class="mut" style="flex:1">Od<input id="ap-from" type="date" min="${today}" value="${today}"></label>
+        <label class="mut" style="flex:1">Do<input id="ap-to" type="date" min="${today}"></label></div>
+      <select id="ap-reason">${['Nemoc','Zranění','Dovolená','Škola','Rodinné důvody'].map(r => `<option>${r}</option>`).join('')}</select>
+      <input id="ap-note" placeholder="Poznámka (volitelné)" maxlength="120">
+      <button class="btn ok" style="width:100%;margin-top:6px" onclick="Absence.add('${Util.q(kid)}')">Omluvit na toto období</button>
+      <div id="ap-msg" class="warn" style="margin-top:6px"></div></details>`;
+  }
+
+  static async add(kid) {
+    const m = Model.member(kid), from = $('#ap-from').value, to = $('#ap-to').value, reason = $('#ap-reason').value, note = $('#ap-note').value.trim(), msg = $('#ap-msg');
+    if (!from || !to) { msg.textContent = 'Vyplňte datum od i do.'; return; }
+    if (to < from) { msg.textContent = 'Datum „do“ nesmí být dřív než „od“.'; return; }
+    if ((new Date(to) - new Date(from)) / 864e5 > 366) { msg.textContent = 'Nejdéle na 1 rok.'; return; }
+    const r = await Sync.write('Omluvu se nepodařilo uložit', sb.from('absence_periods').insert({player_id: m.id, date_from: from, date_to: to, reason, note: note || null}).select());
+    if (!r) return;
+    ['#ap-to', '#ap-note'].forEach(s => { const el = $(s); if (el) el.value = ''; });
+    Notifs.send('C', `🩹 Omluva na delší dobu: ${kid} ${Util.short(from)} – ${Util.short(to)} (${reason}${note ? ', ' + note : ''})`, {team: m.t, tab: 'att'});
+    await Promise.all([Sync.loaders.aper(), Sync.loaders.attendance()]);
+    App.render();
+  }
+
+  static async remove(id) {
+    if (!confirm('Zrušit tuto omluvu? Automaticky omluvené tréninky a zápasy se vrátí do původního stavu.')) return;
+    const r = await Sync.write('Omluvu se nepodařilo zrušit', sb.from('absence_periods').delete().eq('id', id).select());
+    if (!r) return;
+    await Promise.all([Sync.loaders.aper(), Sync.loaders.attendance()]);
+    App.render();
+  }
+}
+
+
+/* ---------------------------------------------------------------------
    Calendar – kalendář dítěte, účast, omluvy, spolujízda, historie zápasů (RODIČ)
    --------------------------------------------------------------------- */
 class Calendar {
@@ -1006,6 +1054,7 @@ class Calendar {
   static view() {
     const team = Model.team(UI.kid);
     return `<div class="col"><h2 style="margin-top:0">📅 Nadcházející · ${UI.kid} (${team})</h2>
+      ${Absence.card(UI.kid)}
       ${Model.eventsOf(team).map(e => Calendar.eventCard(e)).join('')}${Calendar.history(team)}${Calendar.contacts(team)}</div>`;
   }
 
@@ -1566,6 +1615,8 @@ class Roster {
       <div class="card"><b>📅 Stálá absence na trénincích</b>
         <div class="mut">Dny, kdy hráč pravidelně nemůže (např. každé úterý). U nových tréninků v ten den se předvyplní „Omluven“, u konkrétního tréninku to můžete opravit.</div>
         <div class="row" style="margin-top:8px;flex-wrap:wrap">${CONFIG.days.map((d, i) => `<button class="chip ${(DB.pabs[id] || []).includes(i) ? 'on' : ''}" onclick="Roster.toggleAbs('${id}',${i})">${d}</button>`).join('')}</div></div>
+
+      ${Absence.card(m.n)}
 
       <!-- platby hráče (jen ke čtení – upravuje vedení) -->
       <div class="card"><div class="pay"><b>💳 Platby</b><span class="pill ${Model.debt(m) ? 'no' : 'ok'}">${Model.debt(m) ? 'Dluh ' + Model.debt(m) + ' Kč' : 'Vše zaplaceno'}</span></div>
@@ -2654,10 +2705,52 @@ class Settings {
           ${cats.map(([k, l]) => `<label class="pl" style="${all ? '' : 'opacity:.5'}"><span>${l}</span><input type="checkbox" ${on(k) ? 'checked' : ''} ${all ? '' : 'disabled'} onchange="Settings.pref('${k}',this.checked)"></label>`).join('')}
           <div class="mut" style="margin-top:6px">Týká se upozornění do telefonu. Zvonek v aplikaci zobrazuje vše.</div></div>
         ${UI.setMsg ? `<div class="${UI.setOk ? 'cg' : 'warn'}" style="margin-top:8px">${esc(UI.setMsg)}</div>` : ''}</div>
+      ${Settings.calendar()}
       <div class="card"><b>📤 Export statistik do Excelu</b>
         <div class="mut">${u.r == 'p' ? 'Docházka a statistiky vašeho dítěte.' : u.r == 'c' ? 'Docházka hráčů a trenérů vaší kategorie a výsledky zápasů.' : 'Docházka hráčů a trenérů všech kategorií a výsledky zápasů.'}</div>
         <button class="btn ok" style="width:100%;margin-top:8px" onclick="Settings.export()">⬇ Stáhnout Excel</button></div>
       ${u.r == 'p' ? '' : AttImport.view()}</div>`;
+  }
+
+  // ----- Kalendář do telefonu (odkaz ICS, v kalendáři se aktualizuje sám) -----
+  static calUrl() { return `${SUPABASE_URL}/functions/v1/calendar?t=${DB.calTok}`; }
+  static calendar() {
+    if (UI.calTok === undefined) { UI.calTok = null; Settings.calLoad(); }
+    const t = DB.calTok, scope = UI.user.r == 'p' ? 'tréninky a zápasy kategorie vašeho dítěte' : UI.user.r == 'c' ? 'tréninky a zápasy vaší kategorie' : 'tréninky a zápasy všech kategorií';
+    const body = t === undefined ? '<div class="mut" style="margin-top:6px">Načítám…</div>'
+      : !t ? `<div class="mut" style="margin-top:6px">Přidejte si ${scope} do kalendáře v telefonu. Nové, přesunuté i zrušené akce se tam samy aktualizují.</div>
+          <button class="btn ok" style="width:100%;margin-top:8px" onclick="Settings.calCreate()">📆 Vytvořit odkaz do kalendáře</button>`
+      : `<div class="mut" style="margin-top:6px">Obsahuje ${scope}. Aktualizace v kalendáři chodí zhruba po hodině.</div>
+          <div class="row" style="margin-top:8px"><a class="btn ok" href="webcal://${esc(Settings.calUrl().replace(/^https?:\/\//, ''))}">📆 Přidat do kalendáře</a>
+            <a class="btn" target="_blank" rel="noopener" href="https://calendar.google.com/calendar/r?cid=${encodeURIComponent('webcal://' + Settings.calUrl().replace(/^https?:\/\//, ''))}">Google Kalendář</a></div>
+          <input class="cal-url" readonly value="${esc(Settings.calUrl())}" onfocus="this.select()">
+          <div class="row"><button class="btn" onclick="Settings.calCopy()">📋 Zkopírovat odkaz</button><button class="btn" onclick="Settings.calReset()">🔄 Vyměnit odkaz</button></div>
+          <div class="mut" style="margin-top:6px">Odkaz je soukromý – nikomu ho neposílejte. Kdyby se dostal do cizích rukou, klepněte na „Vyměnit odkaz“ (starý přestane fungovat).
+            iPhone: klepněte na „Přidat do kalendáře“. Android: v Google Kalendáři na počítači Další kalendáře → Z adresy URL a vložte odkaz.</div>`;
+    return `<div class="card"><b>📆 Kalendář v telefonu</b>${body}${UI.calMsg ? `<div class="${UI.calOk ? 'cg' : 'warn'}" style="margin-top:8px">${esc(UI.calMsg)}</div>` : ''}</div>`;
+  }
+  static async calLoad() {
+    try { const { data, error } = await sb.from('calendar_tokens').select('token'); DB.calTok = (!error && data && data[0] && data[0].token) || ''; }
+    catch (e) { DB.calTok = ''; }
+    App.render();
+  }
+  static calMsg(t, ok) { UI.calMsg = t; UI.calOk = !!ok; App.render(); }
+  static async calCreate() {
+    const token = crypto.randomUUID();
+    const r = await sb.from('calendar_tokens').upsert({user_id: UI.user.id, token}, {onConflict: 'user_id'});
+    if (r.error) return Settings.calMsg('⚠ Odkaz se nepodařilo vytvořit' + (/relation|calendar_tokens/.test(r.error.message) ? ' – nejdřív spusťte aktualizované SQL v Supabase.' : '.'));
+    DB.calTok = token; UI.calMsg = ''; App.render();
+  }
+  static async calReset() {
+    if (!confirm('Vyměnit odkaz? Kalendář, který ho používá, přestane fungovat a bude potřeba přidat nový odkaz.')) return;
+    const token = crypto.randomUUID();
+    const r = await sb.from('calendar_tokens').upsert({user_id: UI.user.id, token}, {onConflict: 'user_id'});
+    if (r.error) return Settings.calMsg('⚠ Odkaz se nepodařilo vyměnit.');
+    DB.calTok = token; Settings.calMsg('✔ Odkaz je nový. Přidejte si ho do kalendáře znovu.', true);
+  }
+  static async calCopy() {
+    try { await navigator.clipboard.writeText(Settings.calUrl()); Settings.calMsg('✔ Odkaz zkopírován.', true); }
+    catch (e) { const i = document.querySelector(".cal-url"); if (i) { i.focus(); i.select(); } Settings.calMsg('Označte odkaz a zkopírujte ho ručně.'); }
   }
 
   static async pref(k, v) {

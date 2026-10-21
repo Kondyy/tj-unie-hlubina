@@ -659,6 +659,7 @@ create or replace function public.attendance_guard() returns trigger
 language plpgsql security definer set search_path = public as
 $$ begin
   new.updated_at := now();
+  if tg_op = 'UPDATE' and new.response is distinct from old.response then new.absence_id := null; end if;   -- ruční změna odpovědi = už to není automatická omluva
   if public.app_role() = 'p' and coalesce(current_setting('app.skip_guard', true), '') <> '1' then
     if tg_op = 'INSERT' then new.state := null; else new.state := old.state; end if;
     if (tg_op = 'INSERT' or new.response is distinct from old.response)
@@ -875,12 +876,22 @@ create policy pabs_write  on public.player_absence for all to authenticated
 create or replace function public.events_apply_absence() returns trigger
 language plpgsql security definer set search_path = public as
 $$ begin
+  perform set_config('app.skip_guard', '1', true);
   if new.kind = 't' then
-    perform set_config('app.skip_guard', '1', true);
     insert into public.attendance (event_id, player_id, state)
       select new.id, pa.player_id, 'O' from public.player_absence pa join public.players pl on pl.id = pa.player_id
        where pl.team = new.team and pa.weekday = extract(isodow from new.event_date)::int - 1
       on conflict (event_id, player_id) do nothing;
+  end if;
+  if not new.cancelled then                                          -- omluva na delší dobu (trénink i zápas)
+    insert into public.attendance (event_id, player_id, state, response, reason, note, absence_id)
+      select new.id, ap.player_id, case when new.kind = 't' then 'O' end, 'n', ap.reason, public.aper_note(ap.date_to, ap.note), ap.id
+        from public.absence_periods ap join public.players pl on pl.id = ap.player_id
+       where pl.team = new.team and new.event_date between ap.date_from and ap.date_to
+      on conflict (event_id, player_id) do update
+        set response = 'n', reason = excluded.reason, note = excluded.note, absence_id = excluded.absence_id,
+            state = coalesce(public.attendance.state, excluded.state)
+        where public.attendance.response is null;
   end if;
   return new;
 end $$;
@@ -906,6 +917,79 @@ $$ begin
 end $$;
 drop trigger if exists pabs_after_change on public.player_absence;
 create trigger pabs_after_change after insert or delete on public.player_absence for each row execute function public.pabs_after_change();
+
+-- Omluva na delší dobu (od–do): všechny tréninky a zápasy hráče v tomto období dostanou odpověď „nemůže“ + důvod,
+-- u tréninků navíc značku „Omluven“. Vkládá rodič svého dítěte, trenér své kategorie, vedení kohokoli.
+create table if not exists public.absence_periods (
+  id         bigint generated always as identity primary key,
+  player_id  uuid not null references public.players(id) on delete cascade,
+  date_from  date not null,
+  date_to    date not null,
+  reason     text not null default '',
+  note       text,
+  created_by uuid default auth.uid(),
+  created_at timestamptz not null default now(),
+  check (date_to >= date_from and date_to - date_from <= 366)
+);
+create index if not exists absence_periods_player_idx on public.absence_periods (player_id);
+alter table public.absence_periods enable row level security;
+drop policy if exists aper_select on public.absence_periods;
+create policy aper_select on public.absence_periods for select to authenticated using (public.can_see_player(player_id));
+drop policy if exists aper_insert on public.absence_periods;
+create policy aper_insert on public.absence_periods for insert to authenticated with check (
+  public.is_mgmt()
+  or (public.app_role() = 'c' and exists (select 1 from public.players p where p.id = player_id and p.team = public.app_team()))
+  or (public.app_role() = 'p' and exists (select 1 from public.parent_players pp where pp.parent_id = auth.uid() and pp.player_id = absence_periods.player_id)));
+drop policy if exists aper_delete on public.absence_periods;
+create policy aper_delete on public.absence_periods for delete to authenticated using (
+  public.is_mgmt()
+  or (public.app_role() = 'c' and exists (select 1 from public.players p where p.id = player_id and p.team = public.app_team()))
+  or (public.app_role() = 'p' and exists (select 1 from public.parent_players pp where pp.parent_id = auth.uid() and pp.player_id = absence_periods.player_id)));
+
+alter table public.attendance add column if not exists absence_id bigint references public.absence_periods(id) on delete set null;
+
+-- Text poznámky u automatické omluvy
+create or replace function public.aper_note(d date, n text) returns text
+language sql immutable set search_path = public as
+$$ select 'Omluva na delší dobu do ' || to_char(d, 'FMDD. FMMM.') || coalesce(' – ' || nullif(btrim(n), ''), '') $$;
+
+-- Nová omluva → propíše se do už existujících budoucích událostí (ruční odpovědi se nepřepisují)
+create or replace function public.aper_after_insert() returns trigger
+language plpgsql security definer set search_path = public as
+$$ begin
+  perform set_config('app.skip_guard', '1', true);
+  insert into public.attendance (event_id, player_id, state, response, reason, note, absence_id)
+    select e.id, new.player_id, case when e.kind = 't' then 'O' end, 'n', new.reason, public.aper_note(new.date_to, new.note), new.id
+      from public.events e join public.players pl on pl.id = new.player_id and pl.team = e.team
+     where not e.cancelled and e.event_date between greatest(new.date_from, current_date) and new.date_to
+    on conflict (event_id, player_id) do update
+      set response = 'n', reason = excluded.reason, note = excluded.note, absence_id = excluded.absence_id,
+          state = coalesce(public.attendance.state, excluded.state)
+      where public.attendance.response is null;
+  return new;
+end $$;
+drop trigger if exists aper_after_insert on public.absence_periods;
+create trigger aper_after_insert after insert on public.absence_periods for each row execute function public.aper_after_insert();
+
+-- Zrušená omluva → zmizí jen to, co vzniklo automaticky a nikdo to neupravil
+create or replace function public.aper_before_delete() returns trigger
+language plpgsql security definer set search_path = public as
+$$ begin
+  perform set_config('app.skip_guard', '1', true);
+  delete from public.attendance where absence_id = old.id and response = 'n' and (state is null or state = 'O');
+  return old;
+end $$;
+drop trigger if exists aper_before_delete on public.absence_periods;
+create trigger aper_before_delete before delete on public.absence_periods for each row execute function public.aper_before_delete();
+
+-- Odkaz na kalendář (ICS): každý uživatel má vlastní tajný token, odkaz lze kdykoli vyměnit
+create table if not exists public.calendar_tokens (
+  user_id uuid primary key default auth.uid() references public.profiles(id) on delete cascade,
+  token   uuid not null unique default gen_random_uuid()
+);
+alter table public.calendar_tokens enable row level security;
+drop policy if exists caltok_own on public.calendar_tokens;
+create policy caltok_own on public.calendar_tokens for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 
 -- Dosavadní docházka trenérů (z importu): uloží vedení, trenér jen sobě
@@ -947,7 +1031,7 @@ alter default privileges in schema public revoke truncate, references, trigger o
 -- ---------------------------------------------------------------------
 do $$ declare t text; begin
   foreach t in array array['chat_messages','attendance','notifications','events','club_messages','plan',
-                           'nominations','player_payments','players','parent_players','profiles','results','teams','settings','direct_messages','coach_attendance','player_absence']
+                           'nominations','player_payments','players','parent_players','profiles','results','teams','settings','direct_messages','coach_attendance','player_absence','absence_periods']
   loop
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
