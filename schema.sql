@@ -610,9 +610,24 @@ $$ select p.id, p.name, p.role, p.team from public.profiles p
     order by p.role, p.name $$;
 
 -- Kontakty na trenéry kategorií, ve kterých hraje dítě přihlášeného rodiče (rodič jinak profily trenérů číst nesmí)
-create or replace function public.team_coaches() returns table (id uuid, name text, team text, email text, phone text)
+alter table public.profiles add column if not exists photo text not null default '';   -- fotka trenéra / vedení (data URL, čtverec 256 px)
+
+-- Vlastní fotka: ukládá ji každý jen sobě (prázdná = odebrat); musí to být obrázek a nesmí být příliš velká
+create or replace function public.set_my_photo(p_photo text) returns void
+language plpgsql security definer set search_path = public as
+$$ begin
+  if coalesce(p_photo, '') <> '' and (p_photo !~ '^data:image/(jpeg|png|webp);base64,' or length(p_photo) > 300000) then
+    raise exception 'Neplatná fotka.';
+  end if;
+  update public.profiles set photo = coalesce(p_photo, '') where id = auth.uid();
+end $$;
+revoke all on function public.set_my_photo(text) from public, anon;
+grant execute on function public.set_my_photo(text) to authenticated;
+
+drop function if exists public.team_coaches();
+create or replace function public.team_coaches() returns table (id uuid, name text, team text, email text, phone text, photo text)
 language sql stable security definer set search_path = public as
-$$ select p.id, p.name, p.team, p.email, p.phone from public.profiles p
+$$ select p.id, p.name, p.team, p.email, p.phone, p.photo from public.profiles p
     where p.role = 'c' and public.app_role() = 'p'
       and public.parent_in_team(auth.uid(), p.team)
     order by p.team, p.name $$;

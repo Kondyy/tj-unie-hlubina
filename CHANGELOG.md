@@ -10,6 +10,12 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ## 21. 10. 2026 (večer)
 
+### Fotka trenérů a vedení
+- Trenér (i vedení a správce) si v **👤 Můj profil** nahraje vlastní fotku, stejně jako u hráčů ji může posunout, zvětšit a otočit.
+- V **Kontaktu na trenéry** (Přehled rodiče) je u jména trenéra malá fotka, bez fotky iniciály.
+
+**Supabase:** spustit celý `schema.sql` (nový sloupec `profiles.photo`, funkce `set_my_photo`, rozšířená `team_coaches`). Pak Ctrl+F5.
+
 ### Úprava fotky hráče
 - Po výběru fotky se otevře okno **Upravit fotku**: fotku lze **posouvat** (tažením), **zvětšit / zmenšit** (posuvník, kolečko myši, dva prsty) a **otočit**. Kruh ukazuje, co zůstane vidět. Teprve po „Uložit“ se fotka uloží.
 - U stávající fotky je nové tlačítko **✂ Upravit** (otevře ji znovu k úpravě).

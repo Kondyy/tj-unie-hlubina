@@ -432,6 +432,13 @@ class Util {
   static age(m) { return m.by ? `${new Date().getFullYear() - m.by} let (ročník ${m.by})` : 'ročník neuvedený'; }
   /** Iniciály hráče z celého jména. */
   static initials(m) { return (m.full || m.n).split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase(); }
+  /** Avatar uživatele (trenér, vedení): fotka, nebo barevné iniciály z jména. */
+  static userAvatar(u, size) {
+    const name = u.name || u.email || '?';
+    if (u.ph && /^data:image\//.test(u.ph)) return `<img class="av" style="width:${size}px;height:${size}px;margin:0" src="${u.ph}" alt="Fotka">`;
+    const h = Util.hue(name);
+    return `<div class="av" style="width:${size}px;height:${size}px;margin:0;font-size:${Math.round(size*.38)}px;background:linear-gradient(135deg,hsl(${h},65%,45%),hsl(${(h+50)%360},65%,32%))">${Util.esc(name.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase())}</div>`;
+  }
   /** Kulatý avatar hráče: fotka, nebo barevné iniciály. */
   static avatar(m, size) {
     if (m.ph && /^data:image\//.test(m.ph)) return `<img class="av" style="width:${size}px;height:${size}px" src="${m.ph}" alt="Fotka hráče">`;
@@ -745,7 +752,7 @@ class Sync {
       const [pr, lk] = await Promise.all([Sync.fetchAll('profiles', q => q.order('name').order('id')), Sync.fetchAll('parent_players', q => q.order('parent_id').order('player_id'))]);
       DB.links = lk;
       DB.users = {};
-      pr.forEach(p => DB.users[p.id] = {id: p.id, r: p.role, name: p.name || p.email || '(bez jména)', email: p.email || '', phone: p.phone || '', mc: !!p.must_change_password, ap: p.att_present || 0, at: p.att_total || 0, role: CONFIG.roles[p.role],
+      pr.forEach(p => DB.users[p.id] = {id: p.id, r: p.role, name: p.name || p.email || '(bez jména)', email: p.email || '', phone: p.phone || '', mc: !!p.must_change_password, ph: p.photo || '', ap: p.att_present || 0, at: p.att_total || 0, role: CONFIG.roles[p.role],
         consent: !('consent_at' in p) || !!p.consent_at, pc: !!p.photo_consent,      // (bez sloupce = SQL ještě nespuštěno → souhlas se nevyžaduje)
         team: p.role == 'a' ? (UI.asTeam || CONFIG.planner.teams[0] || '') : (p.team || ''),
         kids: lk.filter(l => l.parent_id == p.id).map(l => (Model.byId(l.player_id) || {}).n).filter(Boolean).sort()});
@@ -1061,7 +1068,7 @@ class Calendar {
   /** Kontakty na trenéry kategorie: jméno, po rozkliknutí telefon a e-mail. */
   static contacts(team) {
     const L = DB.tcoaches.filter(c => c.team == team);
-    return `<h2>📞 Kontakt na trenéry</h2>${L.length ? L.map(c => `<details class="card"><summary><b>${esc(c.name || c.email)}</b></summary>
+    return `<h2>📞 Kontakt na trenéry</h2>${L.length ? L.map(c => `<details class="card"><summary style="display:flex;gap:10px;align-items:center">${Util.userAvatar({name: c.name, email: c.email, ph: c.photo}, 32)}<b>${esc(c.name || c.email)}</b></summary>
         <div style="margin-top:8px" class="row">${c.phone ? `<a class="btn" href="tel:${esc(Util.phone(c.phone))}">📞 ${esc(c.phone)}</a>` : ''}
         ${c.email ? `<a class="btn" href="mailto:${esc(c.email)}">✉ ${esc(c.email)}</a>` : ''}
         ${!c.phone && !c.email ? '<span class="mut">Trenér nemá vyplněný kontakt.</span>' : ''}</div></details>`).join('') : '<div class="card mut">Trenér kategorie zatím není přiřazen.</div>'}`;
@@ -2225,6 +2232,10 @@ class Profile {
     return `<div class="mo" ${forced ? '' : 'onclick="if(event.target==this)Profile.close()"'}><form class="card" onsubmit="Profile.save();return false">
       <b>${forced ? '🔐 Nastavte si vlastní heslo' : '👤 Můj profil'}</b>
       ${forced ? `<div class="mut" style="margin-top:4px">${UI.recovery && !u.mc ? 'Zvolte si nové heslo (min. 8 znaků).' : 'Přihlásili jste se s počátečním heslem. Z bezpečnostních důvodů si nyní zvolte vlastní heslo (min. 8 znaků). Můžete také doplnit telefon.'}</div>` : ''}
+      ${u.r == 'p' ? '' : `<div style="text-align:center;margin:8px 0">${Util.userAvatar(u, 84)}
+        <div class="row" style="justify-content:center;margin-top:8px">
+          <label class="btn" style="flex:none;cursor:pointer">📷 ${u.ph ? 'Změnit fotku' : 'Nahrát fotku'}<input type="file" accept="image/*" hidden onchange="Profile.photo(this)"></label>
+          ${u.ph ? `<button class="btn" type="button" style="flex:none" onclick="Profile.editPhoto()">✂ Upravit</button><button class="btn" type="button" style="flex:none" onclick="Profile.savePhoto('')">Odebrat</button>` : ''}</div></div>`}
       <label class="mut">Jméno<input id="pf-name" value="${esc(u.name)}" autocomplete="name"></label>
       <label class="mut">Telefon<input id="pf-phone" type="tel" value="${esc(u.phone || '')}" placeholder="+420 777 123 456" autocomplete="tel"></label>
       <div class="mut" style="margin-top:8px">E-mail (přihlašovací): ${esc(u.email)}</div>
@@ -2235,6 +2246,19 @@ class Profile {
       <div class="row" style="margin-top:10px">${forced ? '' : '<button class="btn" type="button" onclick="Profile.close()">Zavřít</button>'}<button class="btn ok" type="submit">Uložit</button></div>
       ${forced ? '<button class="btn" type="button" style="width:100%;margin-top:8px" onclick="Auth.logout()">Odhlásit se</button>' : ''}
     </form></div>`;
+  }
+
+  /** Vlastní fotka (trenér / vedení): úprava v okně Cropper a hned uložení. */
+  static photo(input) {
+    const f = input.files[0]; input.value = ''; if (!f || !/^image\//.test(f.type)) return;
+    const r = new FileReader(); r.onload = e => Profile.editPhoto(e.target.result); r.readAsDataURL(f);
+  }
+  static editPhoto(src) { Cropper.open(src || UI.user.ph, url => Profile.savePhoto(url)); }
+  static async savePhoto(url) {
+    const r = await Sync.write('Fotku se nepodařilo uložit', sb.rpc('set_my_photo', {p_photo: url}));
+    if (!r) return;
+    UI.user.ph = url; if (DB.users[UI.user.id]) DB.users[UI.user.id].ph = url;
+    App.render();
   }
 
   static async save() {
