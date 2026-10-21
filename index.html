@@ -434,16 +434,17 @@ class Util {
   static initials(m) { return (m.full || m.n).split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase(); }
   /** Avatar uživatele (trenér, vedení): fotka, nebo barevné iniciály z jména. */
   static userAvatar(u, size) {
-    const name = u.name || u.email || '?';
-    if (u.ph && /^data:image\//.test(u.ph)) return `<img class="av" style="width:${size}px;height:${size}px;margin:0" src="${u.ph}" alt="Fotka">`;
+    const name = u.name || u.email || '?', src = Photos.src(u.ph);
+    if (src) return `<img class="av" style="width:${size}px;height:${size}px;margin:0" src="${src}" alt="Fotka">`;
     const h = Util.hue(name);
-    return `<div class="av" style="width:${size}px;height:${size}px;margin:0;font-size:${Math.round(size*.38)}px;background:linear-gradient(135deg,hsl(${h},65%,45%),hsl(${(h+50)%360},65%,32%))">${Util.esc(name.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase())}</div>`;
+    return `<div class="av" ${Photos.isPath(u.ph) ? `data-ph="${u.ph}"` : ''} style="width:${size}px;height:${size}px;margin:0;font-size:${Math.round(size*.38)}px;background:linear-gradient(135deg,hsl(${h},65%,45%),hsl(${(h+50)%360},65%,32%))">${Util.esc(name.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase())}</div>`;
   }
   /** Kulatý avatar hráče: fotka, nebo barevné iniciály. */
   static avatar(m, size) {
-    if (m.ph && /^data:image\//.test(m.ph)) return `<img class="av" style="width:${size}px;height:${size}px" src="${m.ph}" alt="Fotka hráče">`;
+    const src = Photos.src(m.ph);
+    if (src) return `<img class="av" style="width:${size}px;height:${size}px" src="${src}" alt="Fotka hráče">`;
     const h = Util.hue(m.n);
-    return `<div class="av" style="width:${size}px;height:${size}px;font-size:${Math.round(size*.38)}px;background:linear-gradient(135deg,hsl(${h},65%,45%),hsl(${(h+50)%360},65%,32%))">${Util.esc(Util.initials(m))}</div>`;
+    return `<div class="av" ${Photos.isPath(m.ph) ? `data-ph="${m.ph}"` : ''} style="width:${size}px;height:${size}px;font-size:${Math.round(size*.38)}px;background:linear-gradient(135deg,hsl(${h},65%,45%),hsl(${(h+50)%360},65%,32%))">${Util.esc(Util.initials(m))}</div>`;
   }
 }
 const $ = sel => document.querySelector(sel);   // zkratky používané v celém kódu
@@ -636,7 +637,7 @@ class Auth {
     App.render();
   }
 
-  static async logout() { try { await sb.auth.signOut(); } catch (e) {} Auth.reset(); }
+  static async logout() { try { await sb.auth.signOut(); } catch (e) {} Photos.clear(); Auth.reset(); }
 
   /** Vyčistí paměť aplikace a vrátí přihlašovací obrazovku. */
   static reset() {
@@ -677,6 +678,7 @@ class Sync {
       UI.user = u; UI.tab = TABS[u.r][0].id; UI.chatSub = 'team'; UI.bell = false; UI.player = ''; UI.attEvent = 0; UI.matchEvent = 0; UI.modal = null;
       if (u.r == 'p') { UI.kid = u.kids[0] || ''; UI.chatTeam = UI.kid ? Model.team(UI.kid) : ''; }
       Sync.subscribe();
+      setTimeout(() => Photos.migrate(), 1500);
     } catch (e) {
       console.error(e);
       try { await sb.auth.signOut(); } catch (x) {}
@@ -1591,6 +1593,122 @@ class Events {
    Profil: fotka, základní údaje, kontakty na rodiče, zdraví a poznámky, statistiky.
    (Údaj o postu hráče se záměrně neeviduje.)
    --------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------
+   Photos – fotky v soukromém úložišti Supabase (bucket "photos"). V tabulkách je jen cesta (players/<id>-<čas>.jpg),
+   obrázek se stáhne jednou na zařízení a uloží do paměti prohlížeče (Cache Storage), takže se nestahuje při každém spuštění.
+   Dřívější fotky uložené přímo v tabulce (data:image…) se zobrazují dál a po přihlášení se samy převedou do úložiště.
+   --------------------------------------------------------------------- */
+class Photos {
+  static map = {};                 // cesta → blob URL (hotové obrázky)
+  static failed = {};              // cesta → 1 (nepodařilo se stáhnout, v tomto sezení se neopakuje)
+  static queue = []; static active = 0; static pending = new Set();
+  static CACHE = 'unie-photos'; static BASE = 'https://photos.invalid/';
+  static isPath(s)   { return /^(players|users)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-\d+\.jpg$/.test(s || ''); }
+  static isLegacy(s) { return /^data:image\//.test(s || ''); }
+
+  /** Adresa obrázku k okamžitému zobrazení. Když ještě není stažený, vrátí '' a stahování se zařadí do fronty. */
+  static src(ref) {
+    if (Photos.isLegacy(ref)) return ref;
+    if (!Photos.isPath(ref)) return '';
+    if (Photos.map[ref]) return Photos.map[ref];
+    if (!Photos.failed[ref] && !Photos.pending.has(ref)) { Photos.pending.add(ref); Photos.queue.push(ref); Photos.pump(); }
+    return '';
+  }
+  static pump() {
+    while (Photos.active < 4 && Photos.queue.length) { Photos.active++; Photos.load(Photos.queue.shift()); }
+  }
+  static async load(path) {
+    try {
+      const c = window.caches ? await caches.open(Photos.CACHE) : null, key = Photos.BASE + path;
+      const hit = c ? await c.match(key) : null;
+      let blob;
+      if (hit) blob = await hit.blob();
+      else {
+        const { data, error } = await sb.storage.from('photos').download(path);
+        if (error || !data) throw error || new Error('prázdná odpověď');
+        blob = data;
+        if (c) { try { await c.put(key, new Response(blob, {headers: {'Content-Type': 'image/jpeg'}})); } catch (e) {} }
+      }
+      Photos.map[path] = URL.createObjectURL(blob);
+      Photos.paint(path);
+    } catch (e) { Photos.failed[path] = 1; console.warn('Fotka se nenačetla', path, e); }
+    finally { Photos.pending.delete(path); Photos.active--; Photos.pump(); }
+  }
+  /** Doplní už zobrazené iniciály o fotku (bez překreslení celé stránky). */
+  static paint(path) {
+    document.querySelectorAll('[data-ph]').forEach(el => {
+      if (el.dataset.ph != path) return;
+      el.style.background = `center / cover no-repeat url("${Photos.map[path]}")`; el.style.color = 'transparent'; el.textContent = ''; el.removeAttribute('data-ph');
+    });
+  }
+  /** Adresa pro úpravu fotky (Cropper): data URL, nebo stažený obrázek. */
+  static url(ref) { return Photos.isLegacy(ref) ? ref : (Photos.map[ref] || ''); }
+
+  static toBlob(dataUrl) {
+    const [head, b64] = dataUrl.split(','), bin = atob(b64), a = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+    return new Blob([a], {type: /data:([^;]+)/.exec(head)[1]});
+  }
+  /** Nahraje fotku (data URL z Cropperu) do úložiště a vrátí cestu. */
+  static async upload(kind, id, dataUrl) {
+    const blob = Photos.toBlob(dataUrl), path = `${kind}/${id}-${Date.now()}.jpg`;
+    const { error } = await sb.storage.from('photos').upload(path, blob, {contentType: 'image/jpeg', upsert: false});
+    if (error) throw error;
+    Photos.map[path] = URL.createObjectURL(blob);
+    if (window.caches) { try { (await caches.open(Photos.CACHE)).put(Photos.BASE + path, new Response(blob, {headers: {'Content-Type': 'image/jpeg'}})); } catch (e) {} }
+    return path;
+  }
+  /** Uloží novou fotku: do úložiště; když ještě není připravené (nespuštěné SQL), dočasně přímo jako data URL. */
+  static async store(kind, id, dataUrl) {
+    try { return await Photos.upload(kind, id, dataUrl); }
+    catch (e) { console.warn('Úložiště fotek není k dispozici, fotka se uloží přímo do tabulky.', e); return dataUrl; }
+  }
+  /** Smaže starý soubor (když je to cesta); chyby nevadí. */
+  static async remove(ref) {
+    if (!Photos.isPath(ref)) return;
+    try { await sb.storage.from('photos').remove([ref]); } catch (e) {}
+    delete Photos.failed[ref];
+    if (window.caches) { try { (await caches.open(Photos.CACHE)).delete(Photos.BASE + ref); } catch (e) {} }
+  }
+  /** Při odhlášení smazat fotky z paměti zařízení (sdílený telefon). */
+  static async clear() {
+    Object.values(Photos.map).forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} });
+    Photos.map = {}; Photos.failed = {}; Photos.queue = []; Photos.migrated = false;
+    if (window.caches) { try { await caches.delete(Photos.CACHE); } catch (e) {} }
+  }
+  /** Smaže z paměti zařízení fotky, které už nikdo nepoužívá (po výměně fotky zůstávají staré soubory). */
+  static async prune() {
+    if (!window.caches) return;
+    try {
+      const used = new Set([...DB.members.map(m => m.ph), ...Object.values(DB.users).map(u => u.ph)].filter(Photos.isPath));
+      const c = await caches.open(Photos.CACHE);
+      for (const r of await c.keys()) if (!used.has(r.url.slice(Photos.BASE.length))) await c.delete(r);
+    } catch (e) {}
+  }
+
+  /** Jednou za přihlášení: převede dřívější fotky z tabulek do úložiště (jen ty, které smí uživatel měnit). */
+  static async migrate() {
+    const u = UI.user; if (!u || Photos.migrated) return; Photos.migrated = true;
+    try {
+      const mine = DB.members.filter(m => Photos.isLegacy(m.ph) && (u.r == 'v' || u.r == 'a' || (u.r == 'c' && m.t == u.team)));
+      for (const m of mine) {
+        const legacy = m.ph, path = await Photos.upload('players', m.id, legacy);
+        const { error } = await sb.from('players').update({photo: path}).eq('id', m.id);
+        if (error) { await Photos.remove(path); throw error; }
+        if (m.ph == legacy) m.ph = path;
+      }
+      if (Photos.isLegacy(u.ph)) {
+        const legacy = u.ph, path = await Photos.upload('users', u.id, legacy);
+        const { error } = await sb.rpc('set_my_photo', {p_photo: path});
+        if (error) { await Photos.remove(path); throw error; }
+        if (u.ph == legacy) u.ph = path;
+      }
+      if (mine.length || Photos.isPath(u.ph)) App.render();
+    } catch (e) { console.warn('Převod fotek do úložiště se nezdařil (spustili jste aktuální schema.sql?)', e); }
+    Photos.prune();
+  }
+}
+
 /** Úprava fotky před uložením: posun (tažení), zvětšení / zmenšení (posuvník, kolečko, dva prsty), otočení a ořez na čtverec. */
 class Cropper {
   static V = 280;                                                                   // velikost náhledu v px
@@ -1772,7 +1890,7 @@ class Roster {
   static setNum(id, key, val) { Model.byId(id)[key] = val === '' ? '' : +val; Sync.savePlayer(id); }    // číselné pole
   static setDoc(id, val)      { DB.docs[Model.byId(id).n] = val; App.render(); Sync.savePlayer(id, true); }   // stav zdravotní prohlídky
   static addParent(id)   { Model.byId(id).par.push({n:'', ph:'', em:''}); App.render(); Sync.savePlayer(id, true); }
-  static removePhoto(id) { Model.byId(id).ph = ''; App.render(); Sync.savePlayer(id, true); }
+  static removePhoto(id) { const m = Model.byId(id), old = m.ph; m.ph = ''; App.render(); Sync.savePlayer(id, true); Photos.remove(old); }
 
   /** Úprava údaje rodiče; odkazy Zavolat / SMS / E-mail se přepíšou hned. */
   static setParent(id, j, key, val) {
@@ -1790,7 +1908,13 @@ class Roster {
     r.readAsDataURL(f);
   }
   static editPhoto(id, src) {
-    Cropper.open(src || Model.byId(id).ph, url => { Model.byId(id).ph = url; App.render(); Sync.savePlayer(id, true); });
+    src = src || Photos.url(Model.byId(id).ph);
+    if (!src) return Sync.toast('Fotka se ještě načítá, zkuste to za chvilku.');
+    Cropper.open(src, async url => {
+      const m = Model.byId(id), old = m.ph;
+      m.ph = await Photos.store('players', id, url); App.render(); Sync.savePlayer(id, true);
+      if (old != m.ph) Photos.remove(old);
+    });
   }
 
   /** Přidá nového hráče do týmu přihlášeného trenéra a otevře jeho kartu. */
@@ -2253,10 +2377,16 @@ class Profile {
     const f = input.files[0]; input.value = ''; if (!f || !/^image\//.test(f.type)) return;
     const r = new FileReader(); r.onload = e => Profile.editPhoto(e.target.result); r.readAsDataURL(f);
   }
-  static editPhoto(src) { Cropper.open(src || UI.user.ph, url => Profile.savePhoto(url)); }
+  static editPhoto(src) {
+    src = src || Photos.url(UI.user.ph);
+    if (!src) return Sync.toast('Fotka se ještě načítá, zkuste to za chvilku.');
+    Cropper.open(src, async url => Profile.savePhoto(url ? await Photos.store('users', UI.user.id, url) : ''));
+  }
   static async savePhoto(url) {
+    const old = UI.user.ph;
     const r = await Sync.write('Fotku se nepodařilo uložit', sb.rpc('set_my_photo', {p_photo: url}));
-    if (!r) return;
+    if (!r) { if (url != old) Photos.remove(url); return; }
+    if (old != url) Photos.remove(old);
     UI.user.ph = url; if (DB.users[UI.user.id]) DB.users[UI.user.id].ph = url;
     App.render();
   }
@@ -2417,8 +2547,10 @@ class Admin {
       ${Import.view('players')}
       ${Import.view('parents')}
       <div class="card"><b>💾 Záloha dat</b>
-        <div class="mut">Stáhne Excel se všemi daty klubu (hráči, účty bez hesel, platby, události, výsledky, docházka, rozvrh). Doporučujeme stahovat pravidelně, např. jednou měsíčně. V Supabase si navíc zapněte automatické zálohy databáze.</div>
-        <button class="btn" style="width:100%;margin-top:8px" onclick="Admin.backup()">⬇ Stáhnout zálohu</button></div>
+        ${Admin.backupInfo()}
+        <div class="mut">Excel se všemi daty klubu: hráči, účty (bez hesel), platby, události, výsledky, docházka, nominace, poznámky, omluvy, rozvrh, zprávy. Na bezplatném tarifu Supabase nejsou automatické zálohy, proto zálohu stahujte pravidelně (aspoň jednou týdně a vždy před větší změnou).</div>
+        <button class="btn" style="width:100%;margin-top:8px" onclick="Admin.backup()">⬇ Stáhnout zálohu (Excel)</button>
+        <button class="btn" style="width:100%;margin-top:8px" onclick="Admin.backupPhotos()">🖼 Stáhnout fotky (ZIP)</button></div>
       ${UI.admMsg ? `<div class="card ${UI.admOk ? 'cg' : 'cr'}">${esc(UI.admMsg)}</div>` : ''}</div>`;
   }
 
@@ -2455,11 +2587,39 @@ class Admin {
     CONFIG.account = v; Admin.msg('✔ Číslo účtu uloženo.', true);
   }
 
+  /** Řádek o poslední záloze (ze zařízení, kde se stahovala); po týdnu upozorní. */
+  static backupInfo() {
+    let t = 0; try { t = +localStorage.getItem('unie-last-backup') || 0; } catch (e) {}
+    if (!t) return '<div class="warn" style="margin:6px 0">⚠ Na tomto zařízení zatím nebyla stažena žádná záloha.</div>';
+    const days = Math.floor((Date.now() - t) / 864e5), d = new Date(t);
+    return `<div class="${days > 7 ? 'warn' : 'mut'}" style="margin:6px 0">${days > 7 ? '⚠ ' : ''}Poslední záloha: ${d.getDate()}. ${d.getMonth() + 1}. ${d.getFullYear()} (${days ? 'před ' + days + ' dny' : 'dnes'})${days > 7 ? ' – stáhněte novou.' : ''}</div>`;
+  }
+  /** Fotky hráčů a trenérů jako ZIP (složka = kategorie / trenéři). */
+  static async backupPhotos() {
+    Admin.msg('Připravuji fotky…', true);
+    try {
+      if (!window.JSZip) await new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'; s.onload = ok; s.onerror = () => no(new Error('Knihovnu ZIP se nepodařilo načíst.')); document.head.appendChild(s); });
+      const zip = new JSZip(), safe = s => String(s || 'bez-jmena').replace(/[\\/:*?"<>|]+/g, '_');
+      const items = [...DB.members.map(m => ({ref: m.ph, name: safe(m.t) + '/' + safe(m.full || m.n)})), ...Object.values(DB.users).filter(u => u.r != 'p').map(u => ({ref: u.ph, name: 'treneri-a-vedeni/' + safe(u.name)}))].filter(x => x.ref);
+      let n = 0;
+      for (const x of items) {
+        let blob = null;
+        if (Photos.isLegacy(x.ref)) blob = Photos.toBlob(x.ref);
+        else if (Photos.isPath(x.ref)) { const r = await sb.storage.from('photos').download(x.ref); blob = r.data; }
+        if (blob) { zip.file(x.name + '.jpg', blob); n++; }
+      }
+      if (!n) return Admin.msg('Žádné fotky k zálohování.', true);
+      const a = document.createElement('a'); a.href = URL.createObjectURL(await zip.generateAsync({type: 'blob'}));
+      a.download = 'fotky-tj-unie-hlubina-' + Util.iso(new Date()) + '.zip'; a.click();
+      Admin.msg('✔ Fotky staženy (' + n + ').', true);
+    } catch (e) { Admin.msg('⚠ Fotky se nepodařilo stáhnout: ' + (e.message || e)); }
+  }
+
   /** Záloha: načte všechny tabulky ze serveru a stáhne je jako Excel (list = tabulka). */
   static async backup() {
     Admin.msg('Připravuji zálohu…', true);
     try {
-      const tables = {Hráči: 'players', Účty: 'profiles', 'Vazby rodič-dítě': 'parent_players', Příspěvky: 'pay_items', Platby: 'player_payments', Události: 'events', Výsledky: 'results', Docházka: 'attendance', Rozvrh: 'plan', Kategorie: 'teams'};
+      const tables = {Hráči: 'players', Účty: 'profiles', 'Vazby rodič-dítě': 'parent_players', Příspěvky: 'pay_items', Platby: 'player_payments', Události: 'events', Výsledky: 'results', Docházka: 'attendance', Rozvrh: 'plan', Kategorie: 'teams', Nominace: 'nominations', Poznámky: 'notes', 'Poznámky trenérů': 'player_coach', 'Docházka trenérů': 'coach_attendance', 'Omluvy na delší dobu': 'absence_periods', 'Stálá absence': 'player_absence', 'Zprávy klubu': 'club_messages', Chat: 'chat_messages', Nastavení: 'settings'};
       const data = {};
       for (const [name, t] of Object.entries(tables)) {
         try { data[name] = (await Sync.fetchAll(t, q => q)).map(r => { const o = {...r}; delete o.photo; for (const k in o) if (o[k] && typeof o[k] == 'object') o[k] = JSON.stringify(o[k]); return o; }); } catch (e) { data[name] = []; }
@@ -2473,7 +2633,8 @@ class Admin {
         const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], {type: 'application/json'}));
         a.download = 'zaloha-tj-unie-hlubina-' + stamp + '.json'; a.click();
       }
-      Admin.msg('✔ Záloha stažena (' + Object.values(data).reduce((a, r) => a + r.length, 0) + ' záznamů). Fotky hráčů v záloze nejsou.', true);
+      try { localStorage.setItem('unie-last-backup', String(Date.now())); } catch (e) {}
+      Admin.msg('✔ Záloha stažena (' + Object.values(data).reduce((a, r) => a + r.length, 0) + ' záznamů). Fotky stáhnete zvlášť tlačítkem „Stáhnout fotky“.', true);
     } catch (e) { Admin.msg('⚠ Zálohu se nepodařilo vytvořit: ' + (e.message || e)); }
   }
 }

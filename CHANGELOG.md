@@ -8,6 +8,24 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 21. 10. 2026 (noc)
+
+### Fotky v soukromém úložišti a záloha
+**Změněno**
+- **Fotky hráčů i trenérů jsou v soukromém úložišti Supabase**, v tabulkách je jen cesta. Obrázek se stáhne jednou, uloží se do paměti zařízení a při dalším spuštění se už nestahuje. Aplikace se tak rychleji načítá a výrazně se šetří měsíční limit přenesených dat.
+- **Přístup k fotkám hlídá databáze:** fotku hráče vidí jen jeho rodič, trenér kategorie a vedení; fotku trenéra rodiče dětí z jeho kategorie. Nahrát ji smí trenér kategorie / vedení (hráč), každý sám sobě (profil).
+- **Dřívější fotky se samy převedou** do úložiště po přihlášení trenéra, vedení a každého uživatele pro jeho vlastní fotku. Nic se nemusí dělat ručně.
+- Po odhlášení se fotky smažou z paměti zařízení (sdílené telefony).
+
+**Záloha (Správa)**
+- Excel obsahuje i nominace, poznámky, docházku trenérů, omluvy na delší dobu, stálou absenci, zprávy klubu, chat a nastavení.
+- Nové tlačítko **🖼 Stáhnout fotky (ZIP)**: fotky hráčů ve složkách podle kategorie a fotky trenérů zvlášť.
+- Aplikace ukazuje, **kdy se naposledy stahovala záloha**, a po týdnu upozorní.
+
+**Supabase:** spustit celý `schema.sql` (vytvoří úložiště `photos` a pravidla přístupu). Dokud se nespustí, fotky se ukládají po starém a nic se nerozbije. Pak Ctrl+F5.
+
+---
+
 ## 21. 10. 2026 (večer)
 
 ### Fotka trenérů a vedení

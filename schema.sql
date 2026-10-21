@@ -616,7 +616,8 @@ alter table public.profiles add column if not exists photo text not null default
 create or replace function public.set_my_photo(p_photo text) returns void
 language plpgsql security definer set search_path = public as
 $$ begin
-  if coalesce(p_photo, '') <> '' and (p_photo !~ '^data:image/(jpeg|png|webp);base64,' or length(p_photo) > 300000) then
+  if coalesce(p_photo, '') <> '' and not ((p_photo ~ '^data:image/(jpeg|png|webp);base64,' and length(p_photo) <= 300000)
+        or (p_photo like 'users/%' and public.photo_id(p_photo) = auth.uid())) then
     raise exception 'Neplatná fotka.';
   end if;
   update public.profiles set photo = coalesce(p_photo, '') where id = auth.uid();
@@ -632,6 +633,52 @@ $$ select p.id, p.name, p.team, p.email, p.phone, p.photo from public.profiles p
       and public.parent_in_team(auth.uid(), p.team)
     order by p.team, p.name $$;
 grant execute on function public.team_coaches() to authenticated;
+
+-- ---------------------------------------------------------------------
+--  Fotky: soukromé úložiště Supabase (bucket "photos"), do tabulek se ukládá jen cesta
+--    players/<id hráče>-<čas>.jpg   (nahraje trenér kategorie / vedení)
+--    users/<id uživatele>-<čas>.jpg  (nahraje si každý sám)
+--  Dřívější fotky uložené přímo v tabulce (data:image…) aplikace sama převede do úložiště.
+-- ---------------------------------------------------------------------
+create or replace function public.photo_id(p_path text) returns uuid
+language sql immutable set search_path = public as
+$$ select nullif(substring(p_path from '^(?:players|users)/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-[0-9]+\.jpg$'), '')::uuid $$;
+
+-- Smí přihlášený fotku číst?
+create or replace function public.photo_visible(p_path text) returns boolean
+language sql stable security definer set search_path = public as
+$$ select case
+     when public.photo_id(p_path) is null then false
+     when p_path like 'players/%' then public.can_see_player(public.photo_id(p_path))
+     else public.photo_id(p_path) = auth.uid() or public.is_mgmt() or public.coach_sees_parent(public.photo_id(p_path))
+          or exists (select 1 from public.profiles c where c.id = public.photo_id(p_path) and c.role = 'c'
+                       and public.app_role() = 'p' and public.parent_in_team(auth.uid(), c.team)) end $$;
+
+-- Smí přihlášený fotku nahrát / změnit / smazat?
+create or replace function public.photo_writable(p_path text) returns boolean
+language sql stable security definer set search_path = public as
+$$ select case
+     when public.photo_id(p_path) is null then false
+     when p_path like 'players/%' then public.can_edit_player(public.photo_id(p_path))
+     else public.photo_id(p_path) = auth.uid() end $$;
+revoke all on function public.photo_visible(text), public.photo_writable(text) from public, anon;
+grant execute on function public.photo_visible(text), public.photo_writable(text) to authenticated;
+
+do $$ begin
+  if to_regclass('storage.objects') is not null then
+    insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+      values ('photos', 'photos', false, 300000, array['image/jpeg'])
+      on conflict (id) do update set public = false, file_size_limit = 300000, allowed_mime_types = array['image/jpeg'];
+    drop policy if exists photos_select on storage.objects;
+    drop policy if exists photos_insert on storage.objects;
+    drop policy if exists photos_update on storage.objects;
+    drop policy if exists photos_delete on storage.objects;
+    create policy photos_select on storage.objects for select to authenticated using (bucket_id = 'photos' and public.photo_visible(name));
+    create policy photos_insert on storage.objects for insert to authenticated with check (bucket_id = 'photos' and public.photo_writable(name));
+    create policy photos_update on storage.objects for update to authenticated using (bucket_id = 'photos' and public.photo_writable(name)) with check (bucket_id = 'photos' and public.photo_writable(name));
+    create policy photos_delete on storage.objects for delete to authenticated using (bucket_id = 'photos' and public.photo_writable(name));
+  end if;
+end $$;
 
 create or replace function public.dm_before_insert() returns trigger
 language plpgsql security definer set search_path = public as
