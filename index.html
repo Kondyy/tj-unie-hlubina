@@ -2995,14 +2995,14 @@ class Settings {
   static msg(t, ok) { UI.setMsg = t; UI.setOk = !!ok; App.render(); }
 
   static view() {
-    const u = UI.user, P = DB.prefs || {}, on = k => P[k] !== false, all = on('all');
+    // Hlavní vypínač je jen tlačítko zařízení (Push.profileBlock); starý přepínač „Upozornění zapnutá“ (klíč 'all') se už nezobrazuje
+    const u = UI.user, P = DB.prefs || {}, on = k => P.all !== false && P[k] !== false;
     const cats = Settings.CATS.filter(([k]) => !(k == 'chat' && u.r == 'v') && !(k == 'pay' && u.r == 'c'));
     return `<div class="col">
-      <div class="card"><b>🔔 Upozornění</b>
-        ${Push.profileBlock()}
+      <div class="card"><b>🔔 Upozornění v telefonu</b>
+        ${Push.profileBlock(true)}
         <div style="margin-top:10px;border-top:1px solid var(--bd);padding-top:8px"><b>Co mi má přijít do telefonu</b>
-          <label class="pl"><span>Upozornění zapnutá</span><input type="checkbox" ${all ? 'checked' : ''} onchange="Settings.pref('all',this.checked)"></label>
-          ${cats.map(([k, l]) => `<label class="pl" style="${all ? '' : 'opacity:.5'}"><span>${l}</span><input type="checkbox" ${on(k) ? 'checked' : ''} ${all ? '' : 'disabled'} onchange="Settings.pref('${k}',this.checked)"></label>`).join('')}
+          ${cats.map(([k, l]) => `<label class="pl"><span>${l}</span><input type="checkbox" ${on(k) ? 'checked' : ''} onchange="Settings.pref('${k}',this.checked)"></label>`).join('')}
           <div class="mut" style="margin-top:6px">Týká se upozornění do telefonu. Zvonek v aplikaci zobrazuje vše.</div></div>
         ${UI.setMsg ? `<div class="${UI.setOk ? 'cg' : 'warn'}" style="margin-top:8px">${esc(UI.setMsg)}</div>` : ''}</div>
       ${Settings.calendar()}
@@ -3054,7 +3054,7 @@ class Settings {
   }
 
   static async pref(k, v) {
-    DB.prefs = Object.assign({}, DB.prefs, {[k]: v}); App.render();
+    DB.prefs = Object.assign({}, DB.prefs, {[k]: v}); delete DB.prefs.all; App.render();   // 'all' = zrušený hlavní přepínač, při změně se vždy smaže
     const r = await sb.from('user_prefs').upsert({user_id: UI.user.id, notif: DB.prefs}, {onConflict: 'user_id'});
     if (r.error) Settings.msg('⚠ Nastavení se nepodařilo uložit' + (/relation|user_prefs/.test(r.error.message) ? ' – nejdřív spusťte aktualizované SQL v Supabase.' : '.'));
   }
@@ -3107,10 +3107,11 @@ class Push {
   }
   static b64(s) { const p = '='.repeat((4 - s.length % 4) % 4), r = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from([...r].map(c => c.charCodeAt(0))); }
 
-  static profileBlock() {
-    if (!Push.supported()) return `<div class="mut" style="margin-top:10px">🔔 Upozornění mimo aplikaci: tento prohlížeč je nepodporuje. Na iPhonu nejdřív přidejte aplikaci na plochu (Sdílet → Přidat na plochu).</div>`;
+  /** Zapnutí upozornění na zařízení. inline = uvnitř karty v Nastavení (bez vlastního nadpisu a oddělovače). */
+  static profileBlock(inline) {
+    if (!Push.supported()) return `<div class="mut" style="margin-top:${inline ? 6 : 10}px">${inline ? '' : '🔔 '}Upozornění mimo aplikaci: tento prohlížeč je nepodporuje. Na iPhonu nejdřív přidejte aplikaci na plochu (Sdílet → Přidat na plochu).</div>`;
     const denied = Notification.permission == 'denied';
-    return `<div style="margin-top:10px;border-top:1px solid var(--bd);padding-top:8px"><b>🔔 Upozornění v telefonu</b>
+    return `<div style="${inline ? 'margin-top:4px' : 'margin-top:10px;border-top:1px solid var(--bd);padding-top:8px'}">${inline ? '' : '<b>🔔 Upozornění v telefonu</b>'}
       <div class="mut">${denied ? 'Upozornění máte v prohlížeči zakázaná – povolte je v nastavení webu.' : Push.on ? 'Na tomto zařízení jsou zapnutá.' : 'Dostávejte nové zprávy a události i když aplikace není otevřená.'}</div>
       ${denied ? '' : `<button class="btn ${Push.on ? '' : 'ok'}" type="button" style="width:100%;margin-top:6px" onclick="Push.toggle()">${Push.on ? 'Vypnout na tomto zařízení' : 'Zapnout upozornění'}</button>`}</div>`;
   }
@@ -3130,6 +3131,7 @@ class Push {
       const { error } = await sb.from('push_subscriptions').upsert({user_id: UI.user.id, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth}, {onConflict: 'endpoint'});
       if (error) throw error;
       Push.on = true; Push.say('✔ Upozornění zapnuta.', true);
+      if (DB.prefs && DB.prefs.all === false) Settings.pref('all', true);   // dřív vypnutý hlavní přepínač by jinak upozornění dál blokoval
     } catch (e) { Push.say('⚠ ' + (e.message || e)); }
   }
 }
