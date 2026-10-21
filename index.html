@@ -2238,7 +2238,7 @@ class Users {
   /** Karta uživatele: údaje, přiřazené děti (rodič), tlačítka Upravit / Smazat, případně editor. */
   static card(x) {
     const me = x.id == UI.user.id, canEdit = UI.user.r == 'a' || !(x.r == 'v' || x.r == 'a');   // účty vedení a správců upravuje jen správce
-    return `<div class="card"><div class="pay"><div style="min-width:0"><div style="display:flex;gap:10px;align-items:center;margin-bottom:4px">${Util.userAvatar(x, 38)}<span><b>${esc(x.name)}</b> <span class="pill ${x.r == 'a' ? 'no' : x.r == 'v' ? 'z' : x.r == 'c' ? 'ok' : 'wa'}">${x.role}${x.team ? ' ' + esc(x.team) : ''}</span></span></div>
+    return `<div class="card"><div class="pay" style="flex-wrap:wrap;gap:8px"><div style="min-width:0;flex:1 1 230px"><div style="display:flex;gap:12px;align-items:center;margin-bottom:6px">${Util.userAvatar(x, 64)}<span style="min-width:0"><b>${esc(x.name)}</b> <span class="pill ${x.r == 'a' ? 'no' : x.r == 'v' ? 'z' : x.r == 'c' ? 'ok' : 'wa'}">${x.role}${x.team ? ' ' + esc(x.team) : ''}</span></span></div>
         <div class="mut" style="overflow-wrap:anywhere">${esc(x.email)}${x.phone ? ' · ☎ ' + esc(x.phone) : ''}${x.mc ? ' · <span class="cr">čeká na změnu hesla</span>' : ''}${x.consent ? '' : ' · <span class="mut">bez souhlasu</span>'}</div></div>
         ${canEdit ? `<div class="row" style="flex:none"><button class="chip" style="flex:none" onclick="Users.edit('${x.id}')">✏ Upravit</button>
           ${me ? '' : `<button class="chip" style="flex:none;color:var(--r)" onclick="Users.remove('${x.id}')">🗑 Smazat</button>`}</div>` : ''}</div>

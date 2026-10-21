@@ -11,7 +11,7 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 ## 21. 10. 2026 (večer 3)
 
 ### Správce mění fotky uživatelům
-- Ve **Správě uživatelů → Upravit** má **správce** u každého účtu nahrání, úpravu (posun, zvětšení, otočení) a odebrání fotky. U každého uživatele v seznamu je teď i malá fotka.
+- Ve **Správě uživatelů → Upravit** má **správce** u každého účtu nahrání, úpravu (posun, zvětšení, otočení) a odebrání fotky. U každého uživatele v seznamu je teď i fotka (64 px, dobře vidět i na mobilu), tlačítka Upravit / Smazat jsou pod jménem.
 - Vedení fotky jiným měnit nemůže, kontroluje to i databáze.
 
 **Supabase:** nová funkce `admin_set_user_photo` (už je nasazená, pro jistotu ji obsahuje i `schema.sql`).
