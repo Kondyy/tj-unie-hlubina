@@ -140,6 +140,7 @@ label.mut{display:block;margin-top:8px}
 .pl input{width:auto}
 .bar{height:8px;border-radius:99px;background:rgba(255,255,255,.1);margin:8px 0;overflow:hidden}   /* ukazatel (docházka, platby) */
 .bar i{display:block;height:100%;border-radius:99px;background:var(--g)}
+.warn:empty{display:none}
 .warn{background:rgba(244,63,94,.18);border:1px solid rgba(244,63,94,.5);border-radius:12px;padding:9px;margin-top:8px;font-size:13px}
 .mo{position:fixed;inset:0;background:rgba(0,0,0,.65);display:grid;place-items:center;z-index:50;padding:16px}   /* modální okno */
 .mo .card{width:100%;max-width:400px;background:#161b26}
@@ -1054,7 +1055,6 @@ class Calendar {
   static view() {
     const team = Model.team(UI.kid);
     return `<div class="col"><h2 style="margin-top:0">📅 Nadcházející · ${UI.kid} (${team})</h2>
-      ${Absence.card(UI.kid)}
       ${Model.eventsOf(team).map(e => Calendar.eventCard(e)).join('')}${Calendar.history(team)}${Calendar.contacts(team)}</div>`;
   }
 
@@ -1331,10 +1331,12 @@ class Attendance {
         <div class="row"><select id="tr-day">${CONFIG.days.map((n, i) => `<option value="${i}">${Util.date(i)}</option>`).join('')}</select>
           <input id="tr-time" placeholder="Čas (16:00)"></div>
         <select id="tr-place">${CONFIG.venues.map(v => `<option>${v}</option>`).join('')}</select>
+        <label class="pl"><span>🔔 Upozornit rodiče na nový trénink</span><input id="tr-notify" type="checkbox"></label>
         <button class="btn ok" style="width:100%" onclick="Events.add('t')">Přidat trénink</button></div>`;
     }
     return `<button class="btn" onclick="Attendance.close()">← Tréninky</button>        <!-- 2) detail tréninku -->
-      <h2>${Util.date(e.d)} · ${e.t} · ${esc(e.pl)}</h2>${Attendance.coachCard(e)}${Attendance.answers(e)}
+      <h2>${Util.date(e.d)} · ${e.t} · ${esc(e.pl)}</h2>${Attendance.coachCard(e)}
+      <div class="row" style="margin-top:10px">${Events.notifyBtn(e)}</div>${Attendance.answers(e)}
       <div class="g2" style="margin-top:10px">${Model.membersOf(team).map(m => {
         const a = DB.att[e.id + '|' + m.n], p = Model.attPct(m), [ps, tt] = Model.attCount(m);
         return `<div class="card"><div style="display:flex;gap:10px;align-items:center">${Util.avatar(m, 40)}
@@ -1417,6 +1419,7 @@ class Events {
         <div class="row" style="margin-top:8px">
           ${!e.x ? `<button class="btn" onclick="Events.toggleNomination('${e.id}')">${e.nc ? '🔒 ' : ''}Nominace (${(DB.nominations[e.id] || []).length})</button>` : ''}
           ${!e.x ? `<button class="btn" onclick="Events.toggleResult('${e.id}')">🏁 Výsledek</button>` : ''}
+          ${Events.notifyBtn(e)}
           <button class="btn" onclick="Events.cancel(${e.id})">${e.x ? 'Obnovit' : 'Zrušit'}</button><button class="btn" style="flex:none;color:var(--r)" onclick="Events.remove(${e.id})">🗑 Smazat</button></div>
         ${e.x ? '' : Attendance.coachCard(e, true)}${UI.nomEvent == e.id ? Events.nominationBox(e) : ''}${UI.resEvent == e.id ? Events.resultBox(e) : ''}</div>
       ${e.x ? '' : Events.confirmBox(e)}`;
@@ -1430,6 +1433,7 @@ class Events {
       <div class="row"><select id="ev-day">${CONFIG.days.map((n, i) => `<option value="${i}">${Util.date(i)}</option>`).join('')}</select></div>
       <select id="ev-place">${CONFIG.venues.map(v => `<option>${v}</option>`).join('')}</select>
       <input id="ev-time" placeholder="Čas (16:00)"><input id="ev-opp" placeholder="Soupeř">
+      <label class="pl"><span>🔔 Upozornit rodiče na nový zápas</span><input id="ev-notify" type="checkbox"></label>
       <button class="btn ok" style="width:100%" onclick="Events.add('z')">Přidat zápas</button></div>`;
   }
 
@@ -1476,6 +1480,7 @@ class Events {
         <label class="mut">Hráno<select id="rs-home"><option value="1">doma</option><option value="0">venku</option></select></label></div>
       <div class="mut" style="margin-top:6px">Střelci (počet gólů):</div>
       ${L.map((m, i) => `<div class="pay" style="margin-top:4px"><span>${esc(m.full || m.n)}</span><input id="rg-${i}" type="number" min="0" value="0" style="width:70px"></div>`).join('')}
+      <label class="pl"><span>🔔 Upozornit rodiče na výsledek</span><input id="rs-notify" type="checkbox"></label>
       <div class="row" style="margin-top:8px"><button class="btn" onclick="Events.toggleResult('${e.id}')">Zrušit</button><button class="btn ok" onclick="Events.saveResult('${e.id}')">Uložit výsledek</button></div></div>`;
   }
   static async saveResult(id) {
@@ -1489,7 +1494,7 @@ class Events {
     DB.results.unshift({tm: e.tm, d: Util.short(date), o: e.o, h: home ? 1 : 0, s: [us, them], g: scorers});
     Object.entries(scorers).forEach(([n, g]) => { const m = Model.member(n); if (m) { m.gl += g; Sync.savePlayer(m.id, true); } });
     (DB.nominations[id] || []).forEach(n => { const m = Model.member(n); if (m) { m.mp++; Sync.savePlayer(m.id, true); } });
-    Notifs.send('P', `🏁 Výsledek ${e.tm}: ${home ? CLUB + ' ' + us + ':' + them + ' ' + e.o : e.o + ' ' + them + ':' + us + ' ' + CLUB}`, {team: e.tm, tab: 'cal'});
+    if ($('#rs-notify') && $('#rs-notify').checked) Notifs.send('P', `🏁 Výsledek ${e.tm}: ${home ? CLUB + ' ' + us + ':' + them + ' ' + e.o : e.o + ' ' + them + ':' + us + ' ' + CLUB}`, {team: e.tm, tab: 'cal'});
     UI.resEvent = ''; App.render();
   }
 
@@ -1523,23 +1528,38 @@ class Events {
     e.nc = 0; App.render();
   }
   /** Zruší / obnoví událost; při zrušení dostanou rodiče notifikaci. */
+  /** Upozornění rodičům kategorie na akci (posílá se jen na výběr trenéra – nic automaticky). */
+  static notifyParents(e, silent) {
+    Notifs.send('P', `📅 ${e.k == 'z' ? 'Zápas vs. ' + e.o : 'Trénink'} ${Util.date(e.d)} v ${e.t} · ${e.pl} (${e.tm})`, {team: e.tm, tab: 'cal'});
+    if (!silent) Sync.toast('✔ Rodiče kategorie ' + e.tm + ' upozorněni.', true);
+  }
+  /** Tlačítko „Upozornit rodiče“ u akce. */
+  static notifyBtn(e) {
+    return e.x ? '' : `<button class="btn" onclick="event.stopPropagation();Events.notifyParents(Model.event(${e.id}))">🔔 Upozornit rodiče</button>`;
+  }
   static cancel(id) {
-    const e = Model.event(id);
+    const e = Model.event(id), what = e.k == 'z' ? 'Zápas' : 'Trénink';
+    let tell = false;
+    if (!e.x) {                                                                          // rušení: potvrdit a zvlášť rozhodnout o upozornění
+      if (!confirm(`Zrušit ${what.toLowerCase()} ${Util.date(e.d)} (${e.tm})?`)) return;
+      tell = confirm('Poslat rodičům upozornění o zrušení?\n\nOK = poslat, Zrušit = neposílat');
+    }
     e.x = e.x ? 0 : 1;
     App.render();
     Sync.write('Událost se nepodařilo upravit', sb.from('events').update({cancelled: !!e.x}).eq('id', id));
-    if (e.x) Notifs.send('P', `❌ ${e.k == 'z' ? 'Zápas' : 'Trénink'} ${Util.date(e.d)} (${e.tm}) byl zrušen`, {team: e.tm, tab:'cal'});
+    if (e.x && tell) Notifs.send('P', `❌ ${what} ${Util.date(e.d)} (${e.tm}) byl zrušen`, {team: e.tm, tab:'cal'});
   }
   /** Smaže událost úplně (včetně docházky, nominací a odpovědí rodičů). Rodiče dostanou upozornění, byla-li ještě platná. */
   static async remove(id) {
     const e = Model.event(id); if (!e) return;
     if (!confirm(`Smazat ${e.k == 'z' ? 'zápas vs. ' + e.o : 'trénink'} ${Util.date(e.d)} (${e.tm}) úplně? Smaže se i docházka a nominace. Nelze vrátit.`)) return;
+    const tell = !e.x && confirm('Poslat rodičům upozornění, že akce byla zrušena?\n\nOK = poslat, Zrušit = neposílat');
     const r = await Sync.write('Událost se nepodařilo smazat', sb.from('events').delete().eq('id', e.id).select());
     if (!r) return;
     if (!r.data || !r.data.length) return Sync.toast('Smazání nebylo povoleno.');
     DB.events = DB.events.filter(x => x.id != e.id); delete DB.nominations[e.id]; delete DB.att[e.id]; delete DB.coachAtt[e.id];
     if (UI.attEvent == e.id) UI.attEvent = 0;
-    if (!e.x) Notifs.send('P', `❌ ${e.k == 'z' ? 'Zápas' : 'Trénink'} ${Util.date(e.d)} (${e.tm}) byl zrušen`, {team: e.tm, tab:'cal'});
+    if (!e.x && tell) Notifs.send('P', `❌ ${e.k == 'z' ? 'Zápas' : 'Trénink'} ${Util.date(e.d)} (${e.tm}) byl zrušen`, {team: e.tm, tab:'cal'});
     await Sync.loaders.players(); Sync.toast('✔ Smazáno.', true); App.render();
   }
   /** Přidá novou událost týmu přihlášeného trenéra a upozorní rodiče. */
@@ -1549,8 +1569,10 @@ class Events {
     const r = await Sync.write('Událost se nepodařilo přidat', sb.from('events').insert({
       kind: k, team: u.team, event_date: Util.iso(Util.dayDate(d)), time, place, meet: '15 min předem', coach: u.name, opponent: o}).select().single());
     if (!r) return;
-    DB.events.push({id: r.data.id, k, tm: u.team, d, t: time, pl: place, m: '15 min předem', c: u.name, o, x: 0});
-    Notifs.send('P', `🆕 Nová událost: ${k == 'z' ? 'zápas vs. ' + o : 'trénink'} ${Util.date(d)} (${u.team})`, {team: u.team, tab:'cal'});
+    const ne = {id: r.data.id, k, tm: u.team, d, t: time, pl: place, m: '15 min předem', c: u.name, o, x: 0};
+    DB.events.push(ne);
+    if ($('#' + pf + '-notify').checked) Events.notifyParents(ne);                       // jen když to trenér zvolil
+    $('#' + pf + '-notify').checked = false;
     UI.skipKeep = [pf + '-time', 'ev-opp'];
     App.render();
   }
@@ -1953,7 +1975,7 @@ class Planner {
     // databáze při smazání rezervace smaže i z ní vzniklé budoucí tréninky
     if (await Sync.write('Rezervaci se nepodařilo zrušit', sb.from('plan').delete().eq('id', id)) && b) {
       const txt = `❌ Trénink ${b.tm} ${Util.date(b.d)} ${Util.toTime(b.s)} byl zrušen (rozvrh hřiště)`;
-      Notifs.send('P', txt, {team: b.tm, tab: 'cal'}); Notifs.send('C', txt, {team: b.tm, tab: 'att'});
+      Notifs.send('C', txt, {team: b.tm, tab: 'att'});                 // jen trenérům kategorie; rodiče trenér upozorní sám
       // záloha pro případ, že databáze ještě nemá trigger: smazat i trénink ve stejný den a čas
       await sb.from('events').delete().eq('kind', 't').eq('team', b.tm).eq('event_date', Util.iso(Util.dayDate(b.d))).eq('time', Util.toTime(b.s).replace(/^(\d):/, '0$1:'));
       await Sync.loaders.events(); App.render();
@@ -1990,7 +2012,7 @@ class Planner {
           if (sy.error) await Planner.createTrainingDirect(team, d, s, field);   // databáze ještě nemá funkci → vytvořit přímo
           await Sync.loaders.events();
           const txt = `📅 Nový trénink ${team}: ${Util.date(d)} ${Util.toTime(s)}–${Util.toTime(e)} · ${Util.venue(field)}`;
-          Notifs.send('P', txt, {team, tab: 'cal'}); Notifs.send('C', txt, {team, tab: 'att'});
+          Notifs.send('C', txt, {team, tab: 'att'});                       // jen trenérům kategorie; rodiče trenér upozorní sám
         }
       }
     }
@@ -2404,6 +2426,7 @@ class KidProfile {
       <div class="card"><b>🧾 Základní údaje</b>
         ${row('Jméno', esc(m.full || m.n))}${row('Kategorie', esc(m.t))}${row('Číslo dresu', m.no === '' ? '—' : esc(m.no))}${row('Ročník narození', m.by === '' ? '—' : esc(m.by))}
         <div class="pl"><span class="mut">Zdravotní prohlídka</span><span class="pill ${doc[1]}">${doc[0]}</span></div></div>
+      ${Absence.card(m.n)}
       <div class="card"><div class="pay"><b>🗓 Docházka na tréninky</b><span class="pill ${Util.attPill(pct)}">${ps} z ${tt}</span></div>
         <div class="row" style="margin-top:8px"><div class="card stat"><b class="cg">${ps}</b><span class="mut">Přítomen</span></div>
           <div class="card stat"><b class="cw">${exc.length}</b><span class="mut">Omluven</span></div>

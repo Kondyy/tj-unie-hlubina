@@ -6,6 +6,23 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+---
+
+## 21. 10. 2026 (večer)
+
+### Upozornění rodičům jen na výběr trenéra
+**Změněno**
+- **Automatická upozornění rodičům jsou vypnutá.** Rodiče už nedostanou zprávu sami od sebe po přidání, zrušení ani úpravě akce, ani po vytvoření rozvrhu.
+- Při přidání tréninku nebo zápasu je políčko **„Upozornit rodiče“** (výchozí stav je vypnuto).
+- U každé akce je tlačítko **🔔 Upozornit rodiče**, kterým to trenér pošle kdykoli později.
+- Při **zrušení nebo smazání** akce se trenér zeptá, jestli rodiče upozornit.
+- U zadání výsledku zápasu je políčko, jestli rodiče upozornit.
+- Beze změny zůstává upozornění po potvrzení nominace, připomínky plateb, zprávy klubu a chat.
+- **Omluva na delší dobu je v kartě hráče** (rodič: záložka „Hráč“), už ne na Přehledu.
+- Zmizel prázdný červený pruh pod tlačítkem omluvy.
+
+**Supabase:** nic nového. Stačí obnovit stránku (Ctrl+F5).
+
 ## 21. 10. 2026
 
 ### Omluva na delší dobu a kalendář v telefonu
