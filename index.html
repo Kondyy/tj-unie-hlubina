@@ -499,7 +499,13 @@ class Model {
   static canChat(u, team) { return Model.teamsOf(u).includes(team) || (Model.coachLike(u) && team == 'T-' + u.team); }   // 'T-U9' = interní chat trenérů
 
   /** Zprávy chatu kategorie (vytvoří prázdný chat, pokud ještě neexistuje). */
-  static chat(team) { return DB.chats[team] || (DB.chats[team] = []); }
+  static chat(team) {
+    const L = DB.chats[team] || (DB.chats[team] = []), d = (DB.chatDays || {})[team.replace(/^T-/, '')];
+    if (!d) return L;
+    const min = Date.now() - d * 864e5, i = L.findIndex(m => !(m.ts < min));   // starší zprávy skryje hned (v databázi je smaže noční úklid)
+    if (i > 0) L.splice(0, i); else if (i < 0 && L.length) L.length = 0;
+    return L;
+  }
   /** Zprávy od klubu, které uživatel smí vidět (hromadné, trenérské, osobní). */
   static inbox(u) {
     return DB.messages.filter(m => m.fid != u.id &&
@@ -734,7 +740,7 @@ class Sync {
     /** Kategorie klubu (tabulka teams; když tabulka ještě není, zůstanou výchozí) */
     teams: async () => {
       const { data, error } = await sb.from('teams').select('*').order('sort').order('name');
-      if (!error && data.length) CONFIG.planner.teams = data.map(t => t.name);
+      if (!error && data.length) { CONFIG.planner.teams = data.map(t => t.name); DB.chatDays = Object.fromEntries(data.map(t => [t.name, t.chat_days ?? 0])); }
     },
     /** Veřejná nastavení klubu: číslo účtu pro platby, VAPID klíč pro push */
     settings: async () => {
@@ -876,7 +882,7 @@ class Sync {
     }
   };
 
-  static chatRow(r) { return {id: r.id, fid: r.sender_id, f: r.sender_name, role: r.sender_role, x: r.body, t: Util.stamp(r.created_at)}; }
+  static chatRow(r) { return {id: r.id, fid: r.sender_id, f: r.sender_name, role: r.sender_role, x: r.body, t: Util.stamp(r.created_at), ts: Date.parse(r.created_at)}; }
 
   /** Jeden řádek docházky → DB.att (značka trenéra), DB.responses (omluva rodiče), DB.carpool */
   static applyAtt(r, m) {
@@ -3014,11 +3020,33 @@ class Settings {
           ${cats.map(([k, l]) => `<label class="pl"><span>${l}</span><input type="checkbox" ${on(k) ? 'checked' : ''} onchange="Settings.pref('${k}',this.checked)"></label>`).join('')}
           <div class="mut" style="margin-top:6px">Týká se upozornění do telefonu. Zvonek v aplikaci zobrazuje vše.</div></div>
         ${UI.setMsg ? `<div class="${UI.setOk ? 'cg' : 'warn'}" style="margin-top:8px">${esc(UI.setMsg)}</div>` : ''}</div>
+      ${Settings.chatRetention()}
       ${Settings.calendar()}
       <div class="card"><b>📤 Export statistik do Excelu</b>
         <div class="mut">${u.r == 'p' ? 'Docházka a statistiky vašeho dítěte.' : u.r == 'c' ? 'Docházka hráčů a trenérů vaší kategorie a výsledky zápasů.' : 'Docházka hráčů a trenérů všech kategorií a výsledky zápasů.'}</div>
         <button class="btn ok" style="width:100%;margin-top:8px" onclick="Settings.export()">⬇ Stáhnout Excel</button></div>
       ${u.r == 'p' ? '' : AttImport.view()}</div>`;
+  }
+
+  // ----- Mazání starých zpráv chatu kategorie (nastavuje trenér své kategorie) -----
+  static DAYS = [[7, '7 dní'], [14, '14 dní'], [30, '30 dní'], [60, '2 měsíce'], [90, '3 měsíce'], [180, '6 měsíců'], [365, '1 rok'], [0, 'Nemazat']];
+  static chatRetention() {
+    const u = UI.user;
+    if (!(Model.coachLike(u) && u.team)) return '';
+    const d = (DB.chatDays || {})[u.team] ?? 30;
+    return `<div class="card"><b>🗑 Mazání chatu ${esc(u.team)}</b>
+      <div class="mut" style="margin-top:4px">Zprávy v chatu kategorie a v chatu trenérů se po zvolené době samy smažou (u všech členů).</div>
+      <label class="pl"><span>Mazat zprávy starší než</span><select onchange="Settings.setChatDays(+this.value)">
+        ${Settings.DAYS.map(([v, l]) => `<option value="${v}" ${v == d ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      ${UI.chatMsg ? `<div class="${UI.chatOk ? 'cg' : 'warn'}" style="margin-top:8px">${esc(UI.chatMsg)}</div>` : ''}</div>`;
+  }
+  static async setChatDays(d) {
+    const t = UI.user.team, old = (DB.chatDays || {})[t];
+    if (d && (!old || d < old) && !confirm('Zprávy starší než ' + Settings.DAYS.find(x => x[0] == d)[1] + ' se hned smažou všem členům. Pokračovat?')) return App.render();
+    const r = await sb.rpc('set_chat_days', {t, d});
+    if (r.error) { UI.chatMsg = '⚠ Nepodařilo se uložit' + (/set_chat_days|function/.test(r.error.message) ? ' – nejdřív spusťte aktualizované SQL v Supabase.' : '.'); UI.chatOk = false; return App.render(); }
+    DB.chatDays = Object.assign({}, DB.chatDays, {[t]: d});
+    UI.chatMsg = d ? '✔ Uloženo. Zprávy se budou mazat po ' + Settings.DAYS.find(x => x[0] == d)[1] + '.' : '✔ Uloženo. Zprávy se nebudou mazat.'; UI.chatOk = true; App.render();
   }
 
   // ----- Kalendář do telefonu (odkaz ICS, v kalendáři se aktualizuje sám) -----
