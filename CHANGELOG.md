@@ -10,6 +10,12 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ## 21. 10. 2026 (večer)
 
+### Úprava fotky hráče
+- Po výběru fotky se otevře okno **Upravit fotku**: fotku lze **posouvat** (tažením), **zvětšit / zmenšit** (posuvník, kolečko myši, dva prsty) a **otočit**. Kruh ukazuje, co zůstane vidět. Teprve po „Uložit“ se fotka uloží.
+- U stávající fotky je nové tlačítko **✂ Upravit** (otevře ji znovu k úpravě).
+
+**Supabase:** nic nového. Stačí obnovit stránku (Ctrl+F5).
+
 ### Upozornění rodičům jen na výběr trenéra
 **Změněno**
 - **Automatická upozornění rodičům jsou vypnutá.** Rodiče už nedostanou zprávu sami od sebe po přidání, zrušení ani úpravě akce, ani po vytvoření rozvrhu.

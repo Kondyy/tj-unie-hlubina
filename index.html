@@ -1584,6 +1584,63 @@ class Events {
    Profil: fotka, základní údaje, kontakty na rodiče, zdraví a poznámky, statistiky.
    (Údaj o postu hráče se záměrně neeviduje.)
    --------------------------------------------------------------------- */
+/** Úprava fotky před uložením: posun (tažení), zvětšení / zmenšení (posuvník, kolečko, dva prsty), otočení a ořez na čtverec. */
+class Cropper {
+  static V = 280;                                                                   // velikost náhledu v px
+  static open(src, done) {
+    const im = new Image();
+    im.onload = () => Cropper.start(im, done);
+    im.onerror = () => Sync.toast('Fotku se nepodařilo načíst.');
+    im.src = src;
+  }
+  static start(im, done) {
+    const V = Cropper.V, st = {im, rot: 0, z: 1, ox: 0, oy: 0};
+    const el = document.createElement('div');
+    el.id = 'cropper';
+    el.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;padding:16px';
+    el.innerHTML = `<div style="background:#1a2030;color:var(--tx);border:1px solid var(--bd);border-radius:14px;padding:14px;max-width:340px;width:100%;text-align:center">
+      <b>Upravit fotku</b><div class="mut" style="margin:2px 0 10px">Tažením posunete, posuvníkem nebo dvěma prsty zvětšíte.</div>
+      <div style="position:relative;width:${V}px;height:${V}px;margin:0 auto;overflow:hidden;border-radius:10px;touch-action:none;background:#000">
+        <canvas id="crop-cv" width="${V}" height="${V}" style="width:${V}px;height:${V}px;touch-action:none;cursor:grab"></canvas>
+        <div style="position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 999px rgba(0,0,0,.55);pointer-events:none;border:2px solid rgba(255,255,255,.7)"></div></div>
+      <div style="display:flex;gap:8px;align-items:center;margin:12px 0">
+        <span>➖</span><input id="crop-z" type="range" min="1" max="4" step="0.01" value="1" style="flex:1;width:auto"><span>➕</span></div>
+      <div class="row" style="gap:8px">
+        <button class="btn" id="crop-rot" style="flex:none">⟳ Otočit</button>
+        <button class="btn" id="crop-no">Zrušit</button>
+        <button class="btn ok" id="crop-ok">Uložit</button></div></div>`;
+    document.body.appendChild(el);
+    const cv = el.querySelector('#crop-cv'), ctx = cv.getContext('2d');
+    const dims = () => { const sw = st.rot % 2 ? im.height : im.width, sh = st.rot % 2 ? im.width : im.height, base = V / Math.min(sw, sh); return {sw, sh, s: base * st.z}; };
+    const clamp = () => { const d = dims(), mx = Math.max(0, (d.sw * d.s - V) / 2), my = Math.max(0, (d.sh * d.s - V) / 2); st.ox = Math.max(-mx, Math.min(mx, st.ox)); st.oy = Math.max(-my, Math.min(my, st.oy)); };
+    const paint = (c, k) => {                                                       // k = měřítko výstupu
+      const d = dims(); c.fillStyle = '#000'; c.fillRect(0, 0, V * k, V * k);
+      c.save(); c.translate(V * k / 2 + st.ox * k, V * k / 2 + st.oy * k); c.rotate(st.rot * Math.PI / 2); c.scale(d.s * k, d.s * k);
+      c.drawImage(im, -im.width / 2, -im.height / 2); c.restore();
+    };
+    const draw = () => { clamp(); paint(ctx, 1); el.querySelector('#crop-z').value = st.z; };
+    const zoom = z => { st.z = Math.max(1, Math.min(4, z)); draw(); };
+    const P = new Map(); let last = 0;
+    cv.onpointerdown = e => { cv.setPointerCapture(e.pointerId); P.set(e.pointerId, {x: e.clientX, y: e.clientY}); last = 0; cv.style.cursor = 'grabbing'; };
+    cv.onpointermove = e => {
+      const p = P.get(e.pointerId); if (!p) return;
+      const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+      if (P.size == 1) { st.ox += dx; st.oy += dy; draw(); }
+      else if (P.size == 2) { const [a, b] = [...P.values()], dist = Math.hypot(a.x - b.x, a.y - b.y); if (last) zoom(st.z * dist / last); last = dist; }
+    };
+    cv.onpointerup = cv.onpointercancel = e => { P.delete(e.pointerId); last = 0; cv.style.cursor = 'grab'; };
+    cv.onwheel = e => { e.preventDefault(); zoom(st.z * (e.deltaY < 0 ? 1.08 : 1 / 1.08)); };
+    el.querySelector('#crop-z').oninput = e => zoom(+e.target.value);
+    el.querySelector('#crop-rot').onclick = () => { st.rot = (st.rot + 1) % 4; st.ox = st.oy = 0; draw(); };
+    el.querySelector('#crop-no').onclick = () => el.remove();
+    el.querySelector('#crop-ok').onclick = () => {
+      const c = document.createElement('canvas'); c.width = c.height = 256; paint(c.getContext('2d'), 256 / V);
+      el.remove(); done(c.toDataURL('image/jpeg', .85));
+    };
+    draw();
+  }
+}
+
 class Roster {
   /** Záložka "Soupiska": seznam hráčů týmu, nebo detail vybraného hráče. */
   static view() {
@@ -1623,7 +1680,7 @@ class Roster {
         <div style="margin-top:8px"><b style="font-size:18px">${esc(m.full)}</b><div class="mut">#${m.no === '' ? '–' : m.no} · ${Util.age(m)} · ${m.t}</div></div>
         <div class="row" style="margin-top:10px;justify-content:center">
           <label class="btn" style="flex:none;cursor:pointer">📷 ${m.ph ? 'Změnit fotku' : 'Nahrát fotku'}<input type="file" accept="image/*" hidden onchange="Roster.photo('${id}',this)"></label>
-          ${m.ph ? `<button class="btn" style="flex:none" onclick="Roster.removePhoto('${id}')">Odebrat</button>` : ''}</div>
+          ${m.ph ? `<button class="btn" style="flex:none" onclick="Roster.editPhoto('${id}')">✂ Upravit</button><button class="btn" style="flex:none" onclick="Roster.removePhoto('${id}')">Odebrat</button>` : ''}</div>
         <div class="mut" style="margin-top:6px">Fotku nahrávejte jen se souhlasem rodičů.</div></div>
 
       <!-- e) RYCHLÉ STATISTIKY -->
@@ -1718,22 +1775,15 @@ class Roster {
     Sync.savePlayer(id);
   }
 
-  /** Nahrání fotky: zmenší se na čtverec 256 px (data URL v databázi). */
+  /** Nahrání fotky: otevře se úprava (posun, zvětšení, otočení, ořez), výsledek je čtverec 256 px (data URL v databázi). */
   static photo(id, input) {
-    const f = input.files[0]; if (!f || !/^image\//.test(f.type)) return;
+    const f = input.files[0]; input.value = ''; if (!f || !/^image\//.test(f.type)) return;
     const r = new FileReader();
-    r.onload = e => {
-      const im = new Image();
-      im.onload = () => {
-        const c = document.createElement('canvas'), size = 256, k = Math.min(im.width, im.height);
-        c.width = c.height = size;
-        c.getContext('2d').drawImage(im, (im.width - k) / 2, (im.height - k) / 2, k, k, 0, 0, size, size);
-        Model.byId(id).ph = c.toDataURL('image/jpeg', .85);
-        App.render(); Sync.savePlayer(id, true);
-      };
-      im.src = e.target.result;
-    };
+    r.onload = e => Roster.editPhoto(id, e.target.result);
     r.readAsDataURL(f);
+  }
+  static editPhoto(id, src) {
+    Cropper.open(src || Model.byId(id).ph, url => { Model.byId(id).ph = url; App.render(); Sync.savePlayer(id, true); });
   }
 
   /** Přidá nového hráče do týmu přihlášeného trenéra a otevře jeho kartu. */
