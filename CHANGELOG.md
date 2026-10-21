@@ -8,6 +8,14 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 21. 10. 2026 (večer 4)
+
+### Nastavení: jedno upozornění místo dvou
+- Karta **Upozornění** v Nastavení měla dva nadpisy („Upozornění“ a „Upozornění v telefonu“) a navíc zaškrtávátko „Upozornění zapnutá“, které dělalo totéž co tlačítko. Teď je jedna karta **🔔 Upozornění v telefonu**: tlačítko Zapnout/Vypnout a pod ním výběr, co má chodit.
+- Kdo měl dřív „Upozornění zapnutá“ vypnuté, má po zapnutí tlačítka nebo změně kteréhokoli výběru upozornění zase povolená.
+
+**Supabase:** nic.
+
 ## 21. 10. 2026 (večer 3)
 
 ### Správce mění fotky uživatelům
