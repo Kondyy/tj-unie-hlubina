@@ -960,6 +960,15 @@ end $$;
 drop trigger if exists events_apply_absence on public.events;
 create trigger events_apply_absence after insert on public.events for each row execute function public.events_apply_absence();
 
+-- Jednorázově (idempotentně): stálá absence se doplní i do už vytvořených tréninků od dneška dál
+insert into public.attendance (event_id, player_id, state)
+  select e.id, pa.player_id, 'O'
+    from public.events e
+    join public.players pl on pl.team = e.team
+    join public.player_absence pa on pa.player_id = pl.id and pa.weekday = extract(isodow from e.event_date)::int - 1
+   where e.kind = 't' and not e.cancelled and e.event_date >= current_date
+  on conflict (event_id, player_id) do nothing;
+
 -- Nastavení / zrušení stálé absence se propíše do budoucích tréninků (ručně upravené záznamy se nemění)
 create or replace function public.pabs_after_change() returns trigger
 language plpgsql security definer set search_path = public as

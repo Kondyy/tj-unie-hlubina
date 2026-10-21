@@ -8,6 +8,16 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 21. 10. 2026 (večer 2)
+
+### Docházka hráče: omluven / neomluven
+- V **kartě hráče** (trenér i rodič) je sekce **🗓 Docházka na tréninky**: počet **Přítomen / Omluven / Neomluven** ze všech zaznamenaných akcí a seznam absencí tohoto týdne. Dřív se součty počítaly jen z aktuálního týdne, a tak se často ukazovaly nuly.
+- Stálá absence hráče se **doplní i do už vytvořených tréninků** od dneška dál (dřív se předvyplňovalo jen u nově přidaných). Minulé tréninky se nemění.
+
+**Supabase:** spustit `schema.sql` (doplnění je v něm, opakované spuštění nic nepokazí).
+
+---
+
 ## 21. 10. 2026 (noc)
 
 ### Fotky v soukromém úložišti a záloha

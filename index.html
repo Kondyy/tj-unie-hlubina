@@ -517,6 +517,12 @@ class Model {
     Object.entries(DB.att).forEach(([k, v]) => { if (k.slice(k.indexOf('|') + 1) == m.n) { t++; if (v == 'P') p++; } });
     return [p, t];
   }
+  /** Součty z celé zaznamenané docházky hráče: {p: přítomen, o: omluven, n: neomluven, t: celkem}. */
+  static attStates(m) {
+    const r = {p: m.a[0], o: 0, n: 0, t: m.a[1]};
+    Object.entries(DB.att).forEach(([k, v]) => { if (k.slice(k.indexOf('|') + 1) != m.n) return; r.t++; if (v == 'P') r.p++; else if (v == 'O') r.o++; else if (v == 'N') r.n++; });
+    return r;
+  }
   static attPct(m) {
     const [p, t] = Model.attCount(m);
     return t ? Math.round(p / t * 100) : 0;
@@ -1815,6 +1821,8 @@ class Roster {
       <div class="row" style="margin:8px 0 10px"><button class="chip" onclick="Roster.bump('${id}','mp')">+ odehraný zápas</button><button class="chip" onclick="Roster.bump('${id}','gl')">⚽ + gól</button></div>
       <button class="chip" style="color:var(--r);margin-bottom:10px" onclick="Roster.remove('${id}')">🗑 Smazat hráče</button>
 
+      ${KidProfile.attCard(m)}
+
       <!-- stálá absence na trénincích -->
       <div class="card"><b>📅 Stálá absence na trénincích</b>
         <div class="mut">Dny, kdy hráč pravidelně nemůže (např. každé úterý). U nových tréninků v ten den se předvyplní „Omluven“, u konkrétního tréninku to můžete opravit.</div>
@@ -2644,6 +2652,19 @@ class Admin {
    KidProfile – profil hráče pro RODIČE: základní údaje, statistiky, docházka a absence dítěte
    --------------------------------------------------------------------- */
 class KidProfile {
+  /** Karta docházky hráče: součty přítomen / omluven / neomluven a absence tohoto týdne (pro rodiče i trenéra). */
+  static attCard(m) {
+    const s = Model.attStates(m), pct = Model.attPct(m);
+    const ev = DB.events.filter(e => e.tm == m.t && !e.x), mine = e => DB.att[e.id + '|' + m.n];
+    const absent = [...ev.filter(e => mine(e) == 'O').map(e => [e, 'O']), ...ev.filter(e => mine(e) == 'N').map(e => [e, 'N'])].sort((a, b) => a[0].d - b[0].d);
+    return `<div class="card"><div class="pay"><b>🗓 Docházka na tréninky</b><span class="pill ${Util.attPill(pct)}">${s.p} z ${s.t}</span></div>
+        <div class="row" style="margin-top:8px"><div class="card stat"><b class="cg">${s.p}</b><span class="mut">Přítomen</span></div>
+          <div class="card stat"><b class="cw">${s.o}</b><span class="mut">Omluven</span></div>
+          <div class="card stat"><b class="cr">${s.n}</b><span class="mut">Neomluven</span></div></div>
+        ${absent.length ? `<div style="margin-top:10px"><b>Absence tento týden</b>${absent.map(([e, st]) => `<div class="pl"><span>${e.k == 'z' ? '🏆 Zápas' : '⚽ Trénink'} · ${Util.date(e.d)}</span><span class="pill ${st == 'O' ? 'wa' : 'no'}">${st == 'O' ? 'omluven' : 'neomluven'}</span></div>`).join('')}</div>`
+          : '<div class="mut" style="margin-top:8px">Tento týden žádná absence. 👍</div>'}
+        <div class="mut" style="margin-top:8px">Docházku značí trenér na tréninku. Součty zahrnují všechny zaznamenané akce, procenta i dřívější tréninky.</div></div>`;
+  }
   static view() {
     const m = Model.member(UI.kid);
     if (!m) return '<div class="card mut">K vašemu účtu zatím není přiřazeno žádné dítě. Obraťte se na trenéra nebo vedení klubu.</div>';
@@ -2662,13 +2683,7 @@ class KidProfile {
         ${row('Jméno', esc(m.full || m.n))}${row('Kategorie', esc(m.t))}${row('Číslo dresu', m.no === '' ? '—' : esc(m.no))}${row('Ročník narození', m.by === '' ? '—' : esc(m.by))}
         <div class="pl"><span class="mut">Zdravotní prohlídka</span><span class="pill ${doc[1]}">${doc[0]}</span></div></div>
       ${Absence.card(m.n)}
-      <div class="card"><div class="pay"><b>🗓 Docházka na tréninky</b><span class="pill ${Util.attPill(pct)}">${ps} z ${tt}</span></div>
-        <div class="row" style="margin-top:8px"><div class="card stat"><b class="cg">${ps}</b><span class="mut">Přítomen</span></div>
-          <div class="card stat"><b class="cw">${exc.length}</b><span class="mut">Omluven</span></div>
-          <div class="card stat"><b class="cr">${unx.length}</b><span class="mut">Neomluven</span></div></div>
-        ${absent.length ? `<div style="margin-top:10px"><b>Absence tento týden</b>${absent.map(([e, s]) => `<div class="pl"><span>${e.k == 'z' ? '🏆 Zápas' : '⚽ Trénink'} · ${Util.date(e.d)}</span><span class="pill ${s == 'O' ? 'wa' : 'no'}">${s == 'O' ? 'omluven' : 'neomluven'}</span></div>`).join('')}</div>`
-          : '<div class="mut" style="margin-top:8px">Tento týden žádná absence. 👍</div>'}
-        <div class="mut" style="margin-top:8px">Docházku značí trenér na tréninku. Procenta zahrnují i dřívější tréninky.</div></div></div>`;
+      ${KidProfile.attCard(m)}</div>`;
   }
 }
 
