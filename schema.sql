@@ -652,19 +652,48 @@ drop trigger if exists club_before_insert on public.club_messages;
 create trigger club_before_insert before insert on public.club_messages
   for each row execute function public.club_before_insert();
 
--- Docházka: rodič smí měnit jen svou odpověď (response/reason/note/carpool), nikdy značku trenéra (state)
+-- Docházka: rodič smí měnit jen svou odpověď (response/reason/note/carpool), značku trenéra (state) nastaví jen trenér.
+-- Výjimka: omluví-li rodič dítě z TRÉNINKU, zapíše se hráči automaticky „Omluven“ (důvod zůstane v reason/note);
+-- vrátí-li odpověď na „přijde“, automatická omluva se zruší.
 create or replace function public.attendance_guard() returns trigger
 language plpgsql security definer set search_path = public as
 $$ begin
   new.updated_at := now();
   if public.app_role() = 'p' and coalesce(current_setting('app.skip_guard', true), '') <> '1' then
     if tg_op = 'INSERT' then new.state := null; else new.state := old.state; end if;
+    if (tg_op = 'INSERT' or new.response is distinct from old.response)
+       and exists (select 1 from public.events e where e.id = new.event_id and e.kind = 't') then
+      if new.response = 'n' then new.state := 'O';
+      elsif new.response = 'y' and tg_op = 'UPDATE' and old.response = 'n' and old.state = 'O' then new.state := null;
+      end if;
+    end if;
   end if;
   return new;
 end $$;
 drop trigger if exists attendance_guard on public.attendance;
 create trigger attendance_guard before insert or update on public.attendance
   for each row execute function public.attendance_guard();
+
+-- Zpětně: už existující omluvy rodičů z tréninků dostanou značku „Omluven“
+update public.attendance a set state = 'O'
+  from public.events e where e.id = a.event_id and e.kind = 't' and a.response = 'n' and a.state is null;
+
+-- Nominace zápasu: trenér ji potvrdí (uzavře) → hráče už nelze měnit, dokud ji znovu neotevře
+alter table public.events add column if not exists nom_closed boolean not null default false;
+
+create or replace function public.nominations_guard() returns trigger
+language plpgsql security definer set search_path = public as
+$$ declare eid bigint; begin
+  if pg_trigger_depth() > 1 then return coalesce(new, old); end if;      -- kaskádní mazání (smazání hráče / zápasu)
+  eid := coalesce(new.event_id, old.event_id);
+  if exists (select 1 from public.events e where e.id = eid and e.nom_closed) then
+    raise exception 'Nominace je uzavřena – nejdřív ji znovu otevřete.';
+  end if;
+  return coalesce(new, old);
+end $$;
+drop trigger if exists nominations_guard on public.nominations;
+create trigger nominations_guard before insert or update or delete on public.nominations
+  for each row execute function public.nominations_guard();
 
 -- Nová rezervace v rozvrhu hned vytvoří trénink v zobrazovaném týdnu (pondělí týdne podle dneška + 2 dny, jako v aplikaci)
 create or replace function public.plan_after_insert() returns trigger

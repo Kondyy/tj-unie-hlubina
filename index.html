@@ -757,7 +757,7 @@ class Sync {
       const a = Util.iso(Util.dayDate(0)), b = Util.iso(Util.dayDate(6));
       try { await sb.rpc('sync_plan_events', {week_start: a}); } catch (e) { console.warn('sync_plan_events', e); }   // tréninky vzniklé z rozvrhu hřišť (idempotentní)
       const ev = await Sync.fetchAll('events', q => q.gte('event_date', a).lte('event_date', b).order('id'));
-      DB.events = ev.map(e => ({id: e.id, k: e.kind, tm: e.team, d: Util.dayIndex(e.event_date), t: e.time, pl: e.place, m: e.meet, c: e.coach, o: e.opponent || '', x: e.cancelled ? 1 : 0}));
+      DB.events = ev.map(e => ({id: e.id, k: e.kind, tm: e.team, d: Util.dayIndex(e.event_date), t: e.time, pl: e.place, m: e.meet, c: e.coach, o: e.opponent || '', x: e.cancelled ? 1 : 0, nc: e.nom_closed ? 1 : 0}));
     },
     results: async () => {
       const { data, error } = await sb.from('results').select('*').order('played_on', {ascending: false}).order('id', {ascending: false}).limit(60);
@@ -1023,12 +1023,23 @@ class Calendar {
     return `<div class="card ev ${cl}">
       <div class="pay"><b>${e.k == 'z' ? '🏆 Zápas vs. ' + e.o : '⚽ Trénink'}</b><span class="pill ${cl}">${e.x ? 'Zrušeno' : e.k == 'z' ? 'Zápas' : 'Trénink'}</span></div>
       <div class="mut">🕒 ${Util.date(e.d)}, ${e.t} · 📍 ${e.pl}<br>🤝 Sraz: ${e.m} · 👤 ${esc(Model.coachSurnames(e))}</div>
-      ${e.x ? '' : `<div class="row" style="margin-top:10px">
+      ${e.x ? '' : Calendar.nomState(e)}
+      ${e.x || Calendar.notNominated(e) ? '' : `<div class="row" style="margin-top:10px">
           <button class="btn ${r && r.s == 'y' ? 'ok' : ''}" onclick="Calendar.attend('${Util.q(k)}')">✔ Zúčastní se</button>
           <button class="btn ${r && r.s == 'n' ? 'no' : ''}" onclick="Calendar.openExcuse('${Util.q(k)}')">✖ Omluvit se</button></div>
         ${r && r.s == 'n' ? `<div class="mut">Omluven: ${r.r}${r.x ? ' – ' + esc(r.x) : ''}</div>` : ''}
         ${e.k == 'z' ? Calendar.carpoolSelect(k) : ''}`}
     </div>`;
+  }
+
+  /** Zápas s uzavřenou nominací, na kterou dítě nebylo nominováno. */
+  static notNominated(e) { return e.k == 'z' && !!e.nc && !(DB.nominations[e.id] || []).includes(UI.kid); }
+  /** Řádek o nominaci u zápasu: nominován / nenominován / nominace ještě není potvrzena. */
+  static nomState(e) {
+    if (e.k != 'z') return '';
+    if (!e.nc) return '<div class="mut" style="margin-top:6px">⏳ Nominaci ještě trenér nepotvrdil.</div>';
+    return Calendar.notNominated(e) ? `<div class="mut" style="margin-top:6px"><span class="pill wa">Nenominován(a)</span> ${esc(UI.kid)} na tento zápas není nominován(a).</div>`
+      : `<div style="margin-top:6px"><span class="pill ok">🏆 Nominován(a)</span> <span class="mut">Nominaci potvrdil trenér – potvrďte prosím účast.</span></div>`;
   }
 
   /** Výběr spolujízdy u zápasu. */
@@ -1273,14 +1284,24 @@ class Attendance {
         <button class="btn ok" style="width:100%" onclick="Events.add('t')">Přidat trénink</button></div>`;
     }
     return `<button class="btn" onclick="Attendance.close()">← Tréninky</button>        <!-- 2) detail tréninku -->
-      <h2>${Util.date(e.d)} · ${e.t} · ${esc(e.pl)}</h2>${Attendance.coachCard(e)}
+      <h2>${Util.date(e.d)} · ${e.t} · ${esc(e.pl)}</h2>${Attendance.coachCard(e)}${Attendance.answers(e)}
       <div class="g2" style="margin-top:10px">${Model.membersOf(team).map(m => {
         const a = DB.att[e.id + '|' + m.n], p = Model.attPct(m), [ps, tt] = Model.attCount(m);
         return `<div class="card"><div style="display:flex;gap:10px;align-items:center">${Util.avatar(m, 40)}
             <div style="flex:1;min-width:0"><b>${esc(m.full || m.n)}</b><div class="mut">Účast <b class="${Util.attCls(p)}">${p} %</b> (${ps}/${tt} tréninků)</div></div></div>
+          <div style="margin-top:6px"><span class="pill ${Events.answer(m.n, e.id)[0]}" style="white-space:normal">${Events.answer(m.n, e.id)[1]}</span></div>
           <div class="bar" style="margin:8px 0"><i style="width:${p}%;background:${Util.attBg(p)}"></i></div>
           <div class="row">${CONFIG.attStates.map(([c, l, k]) => `<button class="btn ${a == c ? k : ''}" onclick="Attendance.mark('${e.id}','${Util.q(m.n)}','${c}')">${l}</button>`).join('')}</div></div>`;
       }).join('')}</div>`;
+  }
+
+  /** Souhrn odpovědí rodičů k tréninku: kolik potvrdilo, omluvilo se a nereagovalo. */
+  static answers(e) {
+    const L = Model.membersOf(e.tm), c = {ok: 0, no: 0, wa: 0};
+    L.forEach(m => c[Events.answer(m.n, e.id)[0]]++);
+    return `<div class="card" style="margin-top:10px"><b>📋 Odpovědi rodičů</b>
+      <div class="row" style="margin-top:6px"><span class="pill ok">✔ Potvrdilo ${c.ok}</span><span class="pill no">✖ Omluveno ${c.no}</span><span class="pill wa">⏳ Nereagovalo ${c.wa}</span></div>
+      <div class="mut" style="margin-top:6px">Omluvený hráč se u tréninku automaticky označí jako „Omluven“ i s důvodem.</div></div>`;
   }
 
   /** Kolik hráčů už má u tréninku označenou docházku. */
@@ -1337,17 +1358,18 @@ class Events {
         return `<div class="card ev ${m.x ? 'x' : 'z'}" style="cursor:pointer" onclick="Events.openMatch('${m.id}')">
           <div class="pay"><b>🏆 vs. ${esc(m.o)}</b><span class="pill ${m.x ? 'x' : 'z'}">${m.x ? 'Zrušeno' : Util.date(m.d)}</span></div>
           <div class="mut">${esc(m.t)} · 📍 ${esc(m.pl)}</div>
-          <div class="mut">${res ? '🏁 ' + res.s[0] + ':' + res.s[1] : noms ? 'Nominováno: ' + noms : 'Klepnutím otevřete zápas →'}</div></div>`;
+          <div class="mut">${res ? '🏁 ' + res.s[0] + ':' + res.s[1] : noms ? (m.nc ? '🔒 Nominace uzavřena' : 'Nominace rozpracována') + ' · ' + noms + ' hráčů · ' + Events.confirmSummary(m) : 'Klepnutím otevřete zápas →'}</div></div>`;
       }).join('') || '<div class="card mut">Tento týden zatím žádný zápas.</div>'}</div>${Events.form()}`;
     }
     return `<button class="btn" onclick="Events.closeMatch()">← Zápasy</button>
       <h2>🏆 vs. ${esc(e.o)} · ${Util.date(e.d)} · ${esc(e.t)}</h2>
       <div class="card ev ${e.x ? 'x' : e.k}"><div class="pay"><b>📍 ${esc(e.pl)} · vs. ${esc(e.o)}</b><span class="pill ${e.x ? 'x' : 'z'}">${e.x ? 'Zrušeno' : 'Zápas'}</span></div>
         <div class="row" style="margin-top:8px">
-          ${!e.x ? `<button class="btn" onclick="Events.toggleNomination('${e.id}')">Nominace (${(DB.nominations[e.id] || []).length})</button>` : ''}
+          ${!e.x ? `<button class="btn" onclick="Events.toggleNomination('${e.id}')">${e.nc ? '🔒 ' : ''}Nominace (${(DB.nominations[e.id] || []).length})</button>` : ''}
           ${!e.x ? `<button class="btn" onclick="Events.toggleResult('${e.id}')">🏁 Výsledek</button>` : ''}
           <button class="btn" onclick="Events.cancel(${e.id})">${e.x ? 'Obnovit' : 'Zrušit'}</button><button class="btn" style="flex:none;color:var(--r)" onclick="Events.remove(${e.id})">🗑 Smazat</button></div>
-        ${e.x ? '' : Attendance.coachCard(e, true)}${UI.nomEvent == e.id ? Events.nominationBox(e) : ''}${UI.resEvent == e.id ? Events.resultBox(e) : ''}</div>`;
+        ${e.x ? '' : Attendance.coachCard(e, true)}${UI.nomEvent == e.id ? Events.nominationBox(e) : ''}${UI.resEvent == e.id ? Events.resultBox(e) : ''}</div>
+      ${e.x ? '' : Events.confirmBox(e)}`;
   }
   static openMatch(id) { UI.matchEvent = id; UI.nomEvent = 0; UI.resEvent = 0; App.render(); }
   static closeMatch()  { UI.matchEvent = 0; UI.nomEvent = 0; UI.resEvent = 0; App.render(); }
@@ -1361,12 +1383,38 @@ class Events {
       <button class="btn ok" style="width:100%" onclick="Events.add('z')">Přidat zápas</button></div>`;
   }
 
-  /** Seznam hráčů k nominaci na zápas. */
+  /** Seznam hráčů k nominaci na zápas. Po potvrzení je nominace uzavřená (jen k prohlížení), dokud ji trenér znovu neotevře. */
   static nominationBox(e) {
+    const L = DB.nominations[e.id] || [], lock = !!e.nc;
+    return `<div style="margin-top:10px">${lock ? '<div class="mut" style="margin-bottom:6px">🔒 Nominace je potvrzena a uzavřena. Rodiče nominovaných hráčů o ní vědí.</div>' : ''}
+      ${Model.membersOf(e.tm).map(m => `<label class="pl"><span>${m.n}</span>
+      <input type="checkbox" ${L.includes(m.n) ? 'checked' : ''} ${lock ? 'disabled' : ''} onchange="Events.toggleNominee(${e.id},'${Util.q(m.n)}',this.checked)"></label>`).join('')}
+      ${lock ? `<button class="btn" style="width:100%;margin-top:8px" onclick="Events.reopenNomination(${e.id})">🔓 Znovu otevřít nominaci</button>`
+             : `<button class="btn ok" style="width:100%;margin-top:8px" onclick="Events.confirmNomination(${e.id})">✔ Potvrdit nominaci (${L.length})</button>`}</div>`;
+  }
+
+  /** Odpověď rodiče u hráče: ✔ potvrdil / ✖ omluven + důvod / ⏳ nepotvrdil. */
+  static answer(name, eventId) {
+    const r = DB.responses[name + '|' + eventId];
+    if (!r) return ['wa', '⏳ Zatím nepotvrdil'];
+    if (r.s == 'y') return ['ok', '✔ Potvrdil účast'];
+    return ['no', '✖ Omluven' + (r.r ? ' – ' + esc(r.r) : '') + (r.x ? ' (' + esc(r.x) + ')' : '')];
+  }
+  /** „5 z 8 potvrdilo“ pro nominované hráče. */
+  static confirmSummary(e) {
+    const L = DB.nominations[e.id] || [], y = L.filter(n => (DB.responses[n + '|' + e.id] || {}).s == 'y').length;
+    return `potvrdilo ${y} z ${L.length}`;
+  }
+  /** Karta pro trenéra: kdo z nominovaných má potvrzenou účast a kdo ne. */
+  static confirmBox(e) {
     const L = DB.nominations[e.id] || [];
-    return `<div style="margin-top:10px">${Model.membersOf(e.tm).map(m => `<label class="pl"><span>${m.n}</span>
-      <input type="checkbox" ${L.includes(m.n) ? 'checked' : ''} onchange="Events.toggleNominee(${e.id},'${Util.q(m.n)}',this.checked)"></label>`).join('')}
-      <button class="btn ok" style="width:100%;margin-top:8px" onclick="Events.sendNomination(${e.id})">Odeslat nominaci (${L.length})</button></div>`;
+    if (!L.length) return '';
+    const rows = L.map(n => ({n, a: Events.answer(n, e.id)}));
+    const ord = {ok: 0, wa: 1, no: 2};
+    rows.sort((x, y) => ord[x.a[0]] - ord[y.a[0]] || x.n.localeCompare(y.n, 'cs'));
+    return `<div class="card" style="margin-top:10px"><div class="pay"><b>📋 Potvrzení účasti nominovaných</b><span class="pill ${e.nc ? 'ok' : 'wa'}">${e.nc ? 'nominace uzavřena' : 'nominace rozpracována'}</span></div>
+      <div class="mut">${Events.confirmSummary(e)}</div>
+      ${rows.map(r => `<div class="pay" style="margin-top:6px"><span>${esc(r.n)}</span><span class="pill ${r.a[0]}" style="max-width:62%;white-space:normal;text-align:right">${r.a[1]}</span></div>`).join('')}</div>`;
   }
 
   /** Zápis výsledku zápasu: skóre + střelci. Rodiče kategorie dostanou upozornění, hráčům se přičtou góly a zápasy. */
@@ -1398,6 +1446,7 @@ class Events {
   // ----- akce -----
   static toggleNomination(id) { UI.nomEvent = UI.nomEvent == id ? 0 : id; App.render(); }
   static toggleNominee(id, name, on) {
+    if ((Model.event(id) || {}).nc) return alert('Nominace je uzavřena – nejdřív ji znovu otevřete.');
     const L = DB.nominations[id] = (DB.nominations[id] || []).filter(x => x != name), m = Model.member(name);
     if (on) L.push(name);
     App.render();
@@ -1405,13 +1454,23 @@ class Events {
       ? sb.from('nominations').upsert({event_id: +id, player_id: m.id}, {onConflict: 'event_id,player_id'})
       : sb.from('nominations').delete().eq('event_id', +id).eq('player_id', m.id));
   }
-  /** Odešle nominaci: rodiče nominovaných dětí dostanou notifikaci. */
-  static sendNomination(id) {
+  /** Potvrdí a uzavře nominaci: rodiče nominovaných dětí dostanou upozornění a mohou potvrdit účast. */
+  static async confirmNomination(id) {
     const e = Model.event(id), L = DB.nominations[id] || [];
-    L.forEach(n => Notifs.send('K', `🏆 ${n} je nominován(a) na zápas vs. ${e.o} (${Util.date(e.d)})`, {kid:n, tab:'cal'}));   // rodiče nominovaných
+    if (!L.length) return alert('Nejdřív vyberte aspoň jednoho hráče.');
+    const r = await Sync.write('Nominaci se nepodařilo potvrdit', sb.from('events').update({nom_closed: true}).eq('id', +id));
+    if (!r) return;
+    e.nc = 1;
+    L.forEach(n => Notifs.send('K', `🏆 ${n} je nominován(a) na zápas vs. ${e.o} (${Util.date(e.d)}) – potvrďte prosím účast`, {kid:n, tab:'cal'}));   // rodiče nominovaných
     UI.nomEvent = 0;
-    alert('Nominace odeslána: ' + L.length + ' hráčů');
     App.render();
+  }
+  /** Znovu otevře uzavřenou nominaci (hráče lze zase měnit). */
+  static async reopenNomination(id) {
+    const e = Model.event(id);
+    const r = await Sync.write('Nominaci se nepodařilo otevřít', sb.from('events').update({nom_closed: false}).eq('id', +id));
+    if (!r) return;
+    e.nc = 0; App.render();
   }
   /** Zruší / obnoví událost; při zrušení dostanou rodiče notifikaci. */
   static cancel(id) {

@@ -66,3 +66,6 @@ Po importu rodičů stáhnout Excel s přístupy a předat rodičům – při pr
 
 ### Kontakt na trenéry
 Rodič vidí v záložce Přehled úplně dole jména trenérů kategorie svého dítěte; po rozkliknutí telefon a e-mail (telefon si trenér vyplní v Profilu). Vyžaduje znovu spustit `schema.sql` (funkce `team_coaches`).
+
+### Nominace zápasu a omluvy
+Trenér v detailu zápasu vybere hráče a klepne na „Potvrdit nominaci“: nominace se uzavře (hráče nelze měnit, dokud ji trenér znovu neotevře) a rodiče nominovaných dostanou upozornění. Rodič u zápasu vidí „Nominován(a)“ / „Nenominován(a)“; trenér pod zápasem vidí, kdo z nominovaných účast potvrdil, kdo se omluvil (s důvodem) a kdo ještě nereagoval. U tréninků se omluva rodiče hráči automaticky zapíše jako „Omluven“ i s důvodem. Vyžaduje znovu spustit `schema.sql`.
