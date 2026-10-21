@@ -312,6 +312,7 @@ const DB = {
   coachEv: {},      // druh a datum události u účasti trenéra: "idTrenéra|idUdálosti" → {k:'t', d:'2026-10-12'}
   coachNm: {},      // příjmení trenéra u jeho účasti: "idTrenéra|idUdálosti" → 'Kondaš'
   coachAtt: {},     // účast trenéra:   "idTrenéra|idUdálosti"    → 'y' | 'n'
+  pastT: [],        // proběhlé tréninky (i z dřívějších týdnů): {id, tm, d: 'RRRR-MM-DD'} – kvůli docházce trenérů
   nominations: {},  // nominace:        idZápasu → [jména hráčů]
   carpool: {},      // spolujízda:      "dítě|idUdálosti" → 'o1'..'o4' (nabízím) | 's' (hledám)
   responses: {},    // účast/omluva:    "dítě|idUdálosti" → {s:'y'} | {s:'n', r:důvod, x:poznámka}
@@ -460,7 +461,9 @@ class Model {
   static team(kid)       { const m = Model.member(kid); return m ? m.t : ''; }
   static membersOf(team) { return DB.members.filter(m => m.t == team); }
   static event(id)       { return DB.events.find(e => e.id == id); }
-  /** Docházka trenéra na tréninky: {p: přítomen, t: celkem, pct, abs: [data absencí od nejnovější]}. Počítají se tréninky, u kterých má potvrzeno „přijdu“ / „nemohu“. */
+  /** Docházka trenéra na tréninky: {p: přítomen, t: celkem, pct, abs: [data absencí od nejnovější]}.
+   *  Počítají se tréninky s potvrzeným „přijdu“ / „nemohu“ a navíc proběhlé tréninky jeho kategorie
+   *  (zapsaná docházka hráčů), kde účast nepotvrdil – ty se počítají jako absence, aby nechyběly v celkovém počtu. */
   static coachStats(uid) {
     const u0 = DB.users[uid] || {}; let p = u0.ap || 0, t = u0.at || 0; const abs = [];      // dosavadní docházka z importu + potvrzené tréninky
     Object.keys(DB.coachAtt).forEach(k => {
@@ -469,6 +472,10 @@ class Model {
       if (ev.k != 't') return;
       t++; if (DB.coachAtt[k] == 'y') p++; else abs.push(ev.d);
     });
+    if (u0.r == 'c' && u0.team) {
+      const held = new Set(Object.keys(DB.att).map(k => k.slice(0, k.indexOf('|'))));          // tréninky, kde se zapsala docházka hráčů
+      DB.pastT.forEach(e => { if (e.tm == u0.team && held.has(String(e.id)) && !DB.coachAtt[uid + '|' + e.id]) { t++; abs.push(e.d); } });
+    }
     abs.sort().reverse();
     return {p, t, pct: t ? Math.round(p / t * 100) : 0, abs};
   }
@@ -649,7 +656,7 @@ class Auth {
   static reset() {
     Sync.stop();
     Object.assign(DB, {users:{}, members:[], docs:{}, events:[], results:[], payItems:[], plan:[], messages:[], chats:{}, notifs:[], links:[], settings:{}, dm:[], dmContacts:[], tcoaches:[], aper:[], calTok:undefined,
-                       att:{}, coachAtt:{}, coachNm:{}, coachEv:{}, nominations:{}, carpool:{}, responses:{}, notes:{}, seen:{}});
+                       att:{}, coachAtt:{}, coachNm:{}, coachEv:{}, pastT:[], nominations:{}, carpool:{}, responses:{}, notes:{}, seen:{}});
     UI.user = null; UI.asTeam = ''; UI.imp = null; UI.recovery = false; UI.more = false; UI.bell = false; UI.modal = null; UI.profile = false; UI.profMsg = ''; UI.pkSel = {}; UI.player = ''; UI.boot = false; UI.kid = ''; UI.editUser = ''; UI.dmWith = ''; UI.dmSearch = ''; UI.ai = null; UI.calTok = undefined; UI.calMsg = '';
     UI.skipKeep = ['lg-pass', 'lg-email'];
     App.render();
@@ -811,6 +818,8 @@ class Sync {
       DB.coachAtt = {}; DB.coachNm = {}; DB.coachEv = {};
       rows.forEach(r => { const k = r.coach_id + '|' + r.event_id, e = dt[r.event_id] || {}; DB.coachAtt[k] = r.state; DB.coachNm[k] = Util.surname(r.coach_name);
         DB.coachEv[k] = {k: r.ev_kind || e.kind || 't', d: r.ev_date || e.event_date || ''}; });
+      const past = await Sync.fetchAll('events', q => q.eq('kind', 't').eq('cancelled', false).lte('event_date', Util.iso(new Date())).order('id'));
+      DB.pastT = past.map(e => ({id: e.id, tm: e.team, d: e.event_date}));
     },
     noms: async () => {
       const rows = await Sync.fetchAll('nominations', q => q.order('event_id').order('player_id'));
@@ -880,7 +889,7 @@ class Sync {
   // ---------- Realtime ----------
   /** Která tabulka při změně znovu načte které části paměti. */
   static watch = {
-    teams: ['teams'], settings: ['settings'], events: ['events'], results: ['results'], plan: ['plan'], nominations: ['noms'], club_messages: ['club'], notifications: ['notifs'],
+    teams: ['teams'], settings: ['settings'], events: ['events', 'coach'], results: ['results'], plan: ['plan'], nominations: ['noms'], club_messages: ['club'], notifications: ['notifs'],
     coach_attendance: ['coach'], direct_messages: ['dm'], player_absence: ['pabs'], user_prefs: ['prefs'], absence_periods: ['aper'], players: ['players', 'people'], player_payments: ['players'], parent_players: ['people'], profiles: ['people', 'tcoaches']
   };
 

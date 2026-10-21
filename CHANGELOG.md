@@ -16,6 +16,12 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 **Supabase:** nic.
 
+### Docházka trenérů: nepotvrzené tréninky se počítají
+- Trenérovi se do celkového počtu tréninků dosud započítaly jen ty, u kterých klikl „Zúčastním se“ / „Nemohu“. Když účast nepotvrdil (např. Kamil Machálek u tréninku 19. 10.), trénink mu v součtu chyběl.
+- Nově se trenérovi započítá každý proběhlý trénink jeho kategorie, na kterém byla zapsaná docházka hráčů. Nepotvrzená účast se ukáže jako absence; trenér ji opraví kliknutím na „Zúčastním se“ u tréninku.
+
+**Supabase:** nic.
+
 ## 21. 10. 2026 (večer 3)
 
 ### Správce mění fotky uživatelům
