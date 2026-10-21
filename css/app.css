@@ -1,0 +1,157 @@
+/* =====================================================================
+   STYLY – rozdělené do sekcí:
+   1. Proměnné a základ   2. Hlavička a navigace   3. Formuláře a tlačítka
+   4. Karty a rozložení   5. Štítky a stavy        6. Modul: Docházka/Plánovač
+   7. Modul: Chat         8. Modul: Soupiska       9. Responzivita
+   ===================================================================== */
+
+/* ---------- 1. PROMĚNNÉ A ZÁKLAD ---------- */
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  color-scheme:dark;
+  --tx:#eef1f7;                 /* hlavní text */
+  --mut:#8b94a7;                /* tlumený text */
+  --bd:rgba(255,255,255,.1);    /* ohraničení */
+  --gl:rgba(255,255,255,.06);   /* sklo (glassmorphism) */
+  --g:#22c55e;                  /* zelená  – OK / trénink */
+  --b:#3d78e0;                  /* modrá   – zápas / info (odstín z loga, světlejší pro čitelnost) */
+  --br:#e31e26;                 /* červená z loga */
+  --bb:#2452a1;                 /* modrá z loga */
+  --r:#ff4d5a;                  /* červená – chyba / dluh / zrušeno */
+  --y:#f59e0b;                  /* oranžová – varování */
+  --c:255,255,255;              /* aktuální "stavová" barva (RGB), mění ji třídy .ok .no .wa .z */
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px);background:#0a0d14}
+*{box-sizing:border-box}
+body{
+  margin:0;min-height:100vh;color:var(--tx);
+  font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;
+  background:
+    radial-gradient(60% 42% at 8% 0,rgba(227,30,38,.26),transparent),
+    radial-gradient(55% 42% at 96% 6%,rgba(36,82,161,.42),transparent),
+    #0a0d14;
+  background-attachment:fixed;
+}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:40;background:rgba(10,13,20,.85)}
+.wrap{max-width:1000px;margin:0 auto;padding:12px 16px 40px}
+.col{max-width:640px;margin:0 auto}                 /* úzký sloupec pro seznamy */
+h2{font-size:16px;margin:16px 0 8px}
+.mut{color:var(--mut);font-size:13px}
+.cg{color:var(--g)} .cr{color:var(--r)} .cw{color:var(--y)}
+
+/* ---------- 2. HLAVIČKA A NAVIGACE ---------- */
+.hd{position:sticky;top:env(safe-area-inset-top,0px);z-index:30;background:rgba(10,13,20,.72);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid var(--bd)}
+.hdi{display:flex;align-items:center;gap:8px;padding-top:8px;padding-bottom:8px}
+.lg{width:40px;height:40px;flex:none;border-radius:50%;object-fit:cover;box-shadow:0 2px 10px rgba(0,0,0,.45)}
+.ttl{flex:1;min-width:0}
+.ttl b,.ttl span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ttl span{font-size:12px;color:var(--mut)}
+.hd select{width:auto;max-width:150px;margin:0}
+.tabs{display:flex;gap:6px;overflow-x:auto;margin:4px 0 10px;padding-bottom:2px}
+.tabs .chip{white-space:nowrap}
+.kp>*{margin-bottom:12px!important}.kp>h2{margin-bottom:0!important}
+.bnav,.msheet{display:none}
+@media(max-width:759px){
+  .tabs{display:none}
+  body{padding-bottom:calc(74px + env(safe-area-inset-bottom))}
+  .bnav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:40;background:rgba(10,13,20,.94);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-top:1px solid var(--bd);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+  .bnav button{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:0;color:var(--mut);font:inherit;font-size:11px;padding:6px 2px;border-radius:12px;position:relative;cursor:pointer}
+  .bnav button .ic{font-size:22px;line-height:1}
+  .bnav button span.tx{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bnav button.on{color:var(--tx);background:linear-gradient(135deg,rgba(227,30,38,.35),rgba(36,82,161,.55))}
+  .bnav .bd{margin:0;position:absolute;top:0;right:22%;min-width:16px;height:16px;border-radius:8px;background:#e31e26;color:#fff;font-size:10px;line-height:16px;text-align:center;padding:0 4px}
+  .msheet{display:block;position:fixed;inset:0;z-index:39;background:rgba(0,0,0,.55)}
+  .msheet .mg{position:absolute;left:10px;right:10px;bottom:calc(74px + env(safe-area-inset-bottom));background:#121826;border:1px solid var(--bd);border-radius:18px;padding:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .msheet .mg button{display:flex;flex-direction:column;align-items:center;gap:4px;background:var(--gl);border:1px solid var(--bd);border-radius:14px;color:var(--tx);font:inherit;font-size:12px;padding:12px 4px;cursor:pointer}
+  .msheet .mg button.on{border-color:rgba(140,170,240,.7);background:linear-gradient(135deg,rgba(227,30,38,.35),rgba(36,82,161,.55))}
+  .msheet .mg .ic{font-size:24px}
+}
+.bd{background:var(--r);color:#fff;border-radius:99px;font:600 11px/1 system-ui;padding:2px 6px;margin-left:6px;font-style:normal}  /* odznak nepřečtených */
+.nt{padding:8px 4px;border-bottom:1px solid var(--bd);font-size:14px;cursor:pointer}
+.nt.un{border-left:3px solid var(--b);padding-left:8px}                           /* nepřečtená notifikace */
+.pro{display:block;width:100%;text-align:left;padding:14px;margin-bottom:10px;color:var(--tx);font:inherit;cursor:pointer}  /* profil na přihlašovací obrazovce */
+.hero{display:flex;gap:12px;align-items:center;margin-bottom:18px}
+.hero .lg{width:64px;height:64px}
+
+/* ---------- 3. FORMULÁŘE A TLAČÍTKA ---------- */
+.ib,.btn,.chip,select,input,textarea{font:inherit;color:var(--tx);background:var(--gl);border:1px solid var(--bd);border-radius:12px;padding:9px 12px}
+.ib,.btn,.chip{cursor:pointer;transition:.15s}
+.btn:active,.chip:active{transform:scale(.97)}
+select option{background:#151a24}
+input,textarea,select{width:100%;margin:4px 0;font-size:max(16px,1em)}   /* min. 16 px: iPhone jinak při psaní stránku přiblíží */
+html{touch-action:manipulation;-webkit-text-size-adjust:100%}   /* bez přiblížení dvojklepem */
+/* ikonové tlačítko v hlavičce (zvonek, odhlásit) – musí být AŽ ZA obecným pravidlem výše, aby ho přepsalo */
+.ib{position:relative;width:auto;padding:8px 10px}
+.ib i{position:absolute;top:-5px;right:-5px;background:var(--r);border-radius:99px;font:600 11px/1 system-ui;padding:3px 6px;font-style:normal}
+a.btn{text-decoration:none;text-align:center;display:block}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:60;max-width:min(440px,92vw);padding:10px 14px;border-radius:14px;background:rgba(244,63,94,.94);color:#fff;font-size:14px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.toast.good{background:rgba(22,163,74,.95)}
+label.mut input,label.mut select{margin-top:2px}
+.kid{display:inline-flex;align-items:center;gap:6px;padding:3px 6px 3px 10px;border:1px solid var(--bd);border-radius:99px;background:var(--gl);font-size:13px;margin:0 6px 6px 0}
+.kid button{border:0;background:none;color:var(--r);cursor:pointer;font:inherit;padding:0 4px}
+label.mut{display:block;margin-top:8px}
+
+/* ---------- 4. KARTY A ROZLOŽENÍ ---------- */
+.glass,.card{background:var(--gl);border:1px solid var(--bd);border-radius:18px;box-shadow:0 8px 24px rgba(0,0,0,.3);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.card{padding:14px;margin-bottom:10px}
+/* panel notifikací – musí být AŽ ZA .glass, aby přebil průhledné pozadí */
+.panel{position:absolute;right:10px;top:100%;width:min(340px,92vw);padding:10px;margin-top:6px;background:rgba(18,22,32,.95)}
+.g2{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:10px}   /* responzivní mřížka karet */
+.g2>.card{margin:0}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row>*{flex:1}
+.pay{display:flex;justify-content:space-between;align-items:center;gap:8px}              /* řádek "vlevo / vpravo" */
+.pl{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--bd)}
+.pl input{width:auto}
+.bar{height:8px;border-radius:99px;background:rgba(255,255,255,.1);margin:8px 0;overflow:hidden}   /* ukazatel (docházka, platby) */
+.bar i{display:block;height:100%;border-radius:99px;background:var(--g)}
+.warn:empty{display:none}
+.warn{background:rgba(244,63,94,.18);border:1px solid rgba(244,63,94,.5);border-radius:12px;padding:9px;margin-top:8px;font-size:13px}
+.mo{position:fixed;inset:0;background:rgba(0,0,0,.65);display:grid;place-items:center;z-index:50;padding:16px}   /* modální okno */
+.mo .card{width:100%;max-width:400px;background:#161b26}
+
+/* ---------- 5. ŠTÍTKY A STAVOVÉ BARVY ---------- */
+.ok{--c:34,197,94} .no,.x{--c:244,63,94} .wa{--c:245,158,11} .z{--c:61,120,224} .t{--c:61,120,224}
+.pill,.btn.ok,.btn.no,.btn.wa,.chip.on{background:rgba(var(--c),.22);border-color:rgba(var(--c),.6)}
+/* značkové barvy (červená + modrá z loga): aktivní záložka a hlavní tlačítka */
+.chip.on{background:linear-gradient(135deg,rgba(227,30,38,.45),rgba(36,82,161,.7));border-color:rgba(140,170,240,.65)}
+button.btn.ok{background:linear-gradient(135deg,rgba(227,30,38,.55),rgba(36,82,161,.8));border-color:rgba(140,170,240,.65);font-weight:600}
+.tl div.mine{background:rgba(227,30,38,.5);border-color:rgba(255,120,128,.9)}
+.mo .card{max-height:92vh;overflow:auto}
+.pw{position:relative;display:block}.pw input{padding-right:46px}.eye{position:absolute;right:2px;top:4px;bottom:4px;width:42px;background:none;border:0;color:var(--mut);font-size:18px;cursor:pointer}
+.keep{display:flex;align-items:center;gap:8px;margin-top:6px;color:var(--mut);font-size:14px}.keep input{width:auto;margin:0}
+.pill{display:inline-block;padding:2px 10px;border:1px solid;border-radius:99px;font-size:12px;white-space:nowrap}
+.ev{border-left:4px solid rgb(var(--c))}                       /* karta události – barevný pruh */
+.ev.x{opacity:.75}
+
+/* ---------- 6. DOCHÁZKA A PLÁNOVAČ ---------- */
+.tl{position:relative;height:46px;border-radius:12px;background:var(--gl);border:1px solid var(--bd);overflow:hidden}   /* časová osa hřiště */
+.tl div{position:absolute;top:3px;bottom:3px;border-radius:9px;background:rgba(61,120,224,.4);border:1px solid rgba(61,120,224,.8);display:grid;place-items:center;font-size:12px;cursor:pointer;overflow:hidden;white-space:nowrap}
+.tk{display:flex;justify-content:space-between;font-size:11px;color:var(--mut);padding:2px 2px 6px}
+
+/* ---------- 7. CHAT ---------- */
+.chat{display:flex;flex-direction:column;gap:8px;max-height:min(55vh,460px);overflow-y:auto;padding:2px}
+.bub{max-width:84%;padding:8px 12px;border-radius:16px 16px 16px 4px;background:var(--gl);border:1px solid var(--bd);align-self:flex-start;overflow-wrap:anywhere}
+.bub.me{align-self:flex-end;border-radius:16px 16px 4px 16px;background:rgba(36,82,161,.55);border-color:rgba(100,140,230,.6)}
+.bub .nm{font-size:12px;color:var(--mut);display:flex;gap:6px;align-items:center;margin-bottom:2px}
+.bub .tm{font-size:11px;color:var(--mut);text-align:right;margin-top:2px}
+.cin{display:flex;gap:8px;margin-top:10px}
+.cin input{margin:0;flex:1}
+.cin .btn{flex:none}
+
+/* ---------- 8. SOUPISKA A PROFILY HRÁČŮ ---------- */
+.av{border-radius:50%;object-fit:cover;display:grid;place-items:center;font-weight:700;color:#fff;flex:none;margin:0 auto;border:2px solid rgba(255,255,255,.18)}   /* avatar / fotka */
+img.av{display:block}
+.pcard{display:flex;align-items:center;gap:12px;cursor:pointer}
+.pcard .av{margin:0}
+.pcard .pi{flex:1;min-width:0}
+.pcard .pi b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pr{text-align:right;display:flex;flex-direction:column;gap:2px;align-items:flex-end}
+.stat{text-align:center;margin:0;padding:12px 6px}
+.stat b{display:block;font-size:24px}
+
+/* ---------- 9. RESPONZIVITA ---------- */
+@media(max-width:480px){.hdi .lg{display:none}.hd select{max-width:118px}}
+@media(min-width:760px){.wrap{padding:20px 24px 50px}}

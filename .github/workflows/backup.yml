@@ -1,0 +1,56 @@
+# Týdenní záloha databáze (bezplatný Supabase automatické zálohy nedělá).
+# Výsledek je šifrovaný soubor ke stažení v GitHub → Actions → Záloha databáze → artefakt (drží se 90 dní).
+#
+# Nastavení (jednou): GitHub → Settings → Secrets and variables → Actions → New repository secret
+#   SUPABASE_DB_URL     – Supabase → Connect → Session pooler → URI (s heslem databáze)
+#   BACKUP_PASSPHRASE   – libovolné dlouhé heslo; bez něj zálohu nikdo neotevře
+# Obnova: gpg -d zaloha.sql.gz.gpg | gunzip > zaloha.sql  → spustit v Supabase SQL Editoru / psql
+name: Záloha databáze
+
+on:
+  schedule:
+    - cron: '40 1 * * 1'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kontrola nastavení
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$DB_URL" ] || [ -z "$PASS" ]; then
+            echo "::error::Chybí tajné údaje SUPABASE_DB_URL nebo BACKUP_PASSPHRASE (viz README, sekce Zálohy)."
+            exit 1
+          fi
+
+      - name: Nainstalovat pg_dump 17
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsS -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+
+      - name: Záloha a zašifrování
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -o pipefail
+          F="zaloha-$(date -u +%Y-%m-%d).sql.gz.gpg"
+          /usr/lib/postgresql/17/bin/pg_dump "$DB_URL" --schema=public --schema=auth --schema=storage \
+              --no-owner --no-privileges --quote-all-identifiers \
+            | gzip -9 \
+            | gpg --batch --yes --pinentry-mode loopback --passphrase "$PASS" --symmetric --cipher-algo AES256 -o "$F"
+          ls -lh "$F"
+          echo "FILE=$F" >> "$GITHUB_ENV"
+
+      - name: Uložit zálohu
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.FILE }}
+          path: ${{ env.FILE }}
+          retention-days: 90

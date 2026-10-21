@@ -1,10 +1,14 @@
 # TJ Unie Hlubina – klubová aplikace
 
-Jednosouborová webová aplikace (`index.html`) napojená na Supabase. Role: **Rodič, Trenér, Vedení, Správce** (Správce smí „všechno“ – i být trenérem kterékoli kategorie a spravovat účty vedení/správců).
+Webová aplikace (`index.html` + `css/` + `js/`) napojená na Supabase. Role: **Rodič, Trenér, Vedení, Správce** (Správce smí „všechno“ – i být trenérem kterékoli kategorie a spravovat účty vedení/správců).
 
 | Soubor | K čemu |
 |---|---|
-| `index.html` | celá aplikace |
+| `index.html` | stránka aplikace (načte styly a skripty níže) |
+| `css/app.css` | vzhled |
+| `js/zaklad.js` → `js/data.js` → `js/moduly.js` → `js/doplnky.js` → `js/app.js` | kód aplikace (načítá se v tomto pořadí; po úpravě zvyšte `?v=…` v `index.html`) |
+| `.github/workflows/keepalive.yml` | každé 3 dny „probudí“ Supabase, aby se bezplatný projekt neuspal |
+| `.github/workflows/backup.yml` | každý týden šifrovaná záloha databáze (viz Zálohy) |
 | `schema.sql` | databáze + pravidla přístupu (RLS); **lze spouštět opakovaně** |
 | `admin-users-edge-function.ts` | Edge Function `admin-users` (zakládání/mazání účtů) |
 | `send-push-edge-function.ts` | Edge Function `send-push` (upozornění do telefonu) |
@@ -16,6 +20,25 @@ V kódu je jen publikovatelný klíč Supabase. Tajný `service_role` klíč sem
 1. Supabase → **SQL Editor** → vložit celý `schema.sql` → Run.
 2. Supabase → **Edge Functions → admin-users** → vložit nový `admin-users-edge-function.ts` → Deploy.
 3. GitHub Pages se obnoví samo (v telefonu/PC případně Ctrl+F5).
+
+## Zálohy databáze (GitHub Actions, zdarma)
+Bezplatný Supabase automatické zálohy nedělá. Úloha **Záloha databáze** to každou noc na pondělí udělá za vás – potřebuje jednou nastavit dva tajné údaje:
+1. Supabase → **Connect** (nahoře) → **Session pooler** → zkopírujte URI (`postgresql://postgres.sbiweuhxsemjcvmwavwa:[HESLO]@aws-…pooler.supabase.com:5432/postgres`) a místo `[HESLO]` doplňte heslo databáze (Project Settings → Database → Reset password, pokud ho neznáte).
+2. GitHub → repozitář → **Settings → Secrets and variables → Actions → New repository secret**:
+   - `SUPABASE_DB_URL` = URI z bodu 1,
+   - `BACKUP_PASSPHRASE` = libovolné dlouhé heslo (uložte si ho, bez něj zálohu neotevřete).
+3. GitHub → **Actions → Záloha databáze → Run workflow** (první záloha hned). Hotová záloha je ke stažení dole u běhu (Artifacts), drží se 90 dní.
+
+Obnova: `gpg -d zaloha-….sql.gz.gpg | gunzip > zaloha.sql` a soubor spustit přes `psql` (nebo poslat správci). Excel se zálohou v aplikaci (Správa → Záloha dat) zůstává jako druhá možnost.
+
+**Udržení v chodu:** úloha **Udržení Supabase v chodu** běží sama každé 3 dny (nic nastavovat netřeba). Když GitHub úlohy v repozitáři bez změn po 60 dnech pozastaví, stačí v Actions kliknout „Enable workflow“.
+
+## Ochrana přihlášení (volitelné, zdarma)
+Ověření „nejsem robot“ na přihlášení a obnově hesla (Cloudflare Turnstile):
+1. https://dash.cloudflare.com → **Turnstile → Add widget**: název „Unie Hlubina“, doména `kondyy.github.io`, režim **Managed**. Získáte **Site key** a **Secret key**.
+2. V aplikaci **Správa → 🛡 Ochrana přihlášení** vložte **Site key** → Uložit.
+3. Supabase → **Authentication → Attack Protection → Enable Captcha protection** → Turnstile → vložte **Secret key** → Save.
+Pořadí je důležité (nejdřív klíč v aplikaci, pak Supabase), jinak by se nikdo nepřihlásil. Vypnutí: obráceně.
 
 ## První Správce
 Po spuštění SQL v SQL Editoru:
