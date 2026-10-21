@@ -2238,7 +2238,7 @@ class Users {
   /** Karta uživatele: údaje, přiřazené děti (rodič), tlačítka Upravit / Smazat, případně editor. */
   static card(x) {
     const me = x.id == UI.user.id, canEdit = UI.user.r == 'a' || !(x.r == 'v' || x.r == 'a');   // účty vedení a správců upravuje jen správce
-    return `<div class="card"><div class="pay"><div style="min-width:0"><b>${esc(x.name)}</b> <span class="pill ${x.r == 'a' ? 'no' : x.r == 'v' ? 'z' : x.r == 'c' ? 'ok' : 'wa'}">${x.role}${x.team ? ' ' + esc(x.team) : ''}</span>
+    return `<div class="card"><div class="pay"><div style="min-width:0"><div style="display:flex;gap:10px;align-items:center;margin-bottom:4px">${Util.userAvatar(x, 38)}<span><b>${esc(x.name)}</b> <span class="pill ${x.r == 'a' ? 'no' : x.r == 'v' ? 'z' : x.r == 'c' ? 'ok' : 'wa'}">${x.role}${x.team ? ' ' + esc(x.team) : ''}</span></span></div>
         <div class="mut" style="overflow-wrap:anywhere">${esc(x.email)}${x.phone ? ' · ☎ ' + esc(x.phone) : ''}${x.mc ? ' · <span class="cr">čeká na změnu hesla</span>' : ''}${x.consent ? '' : ' · <span class="mut">bez souhlasu</span>'}</div></div>
         ${canEdit ? `<div class="row" style="flex:none"><button class="chip" style="flex:none" onclick="Users.edit('${x.id}')">✏ Upravit</button>
           ${me ? '' : `<button class="chip" style="flex:none;color:var(--r)" onclick="Users.remove('${x.id}')">🗑 Smazat</button>`}</div>` : ''}</div>
@@ -2256,6 +2256,9 @@ class Users {
 
   static editor(x) {
     return `<div style="margin-top:12px;border-top:1px solid var(--bd);padding-top:8px">
+      ${UI.user.r == 'a' ? `<div class="row" style="align-items:center;margin-bottom:6px">${Util.userAvatar(x, 56)}
+        <label class="btn" style="flex:none;cursor:pointer">📷 ${x.ph ? 'Změnit fotku' : 'Nahrát fotku'}<input type="file" accept="image/*" hidden onchange="Users.photo('${x.id}',this)"></label>
+        ${x.ph ? `<button class="btn" style="flex:none" onclick="Users.editPhoto('${x.id}')">✂ Upravit</button><button class="btn" style="flex:none" onclick="Users.setPhoto('${x.id}','')">Odebrat</button>` : ''}</div>` : ''}
       <label class="mut">Jméno<input id="eu-name" value="${esc(x.name)}"></label>
       <label class="mut">E-mail<input id="eu-email" type="email" value="${esc(x.email)}"></label>
       <label class="mut">Nové heslo (prázdné = beze změny)<input id="eu-pass" type="text" autocomplete="off"></label>
@@ -2285,6 +2288,30 @@ class Users {
       UI.skipKeep = ['au-name', 'au-email', 'au-pass'];
       Users.msg(`✔ Účet vytvořen: ${name} (${CONFIG.roles[role]}). Předejte mu e-mail a heslo.`, true);
     } catch (e) { Users.msg('⚠ ' + e.message); }
+  }
+
+  /** Správce mění fotku uživateli: úprava v okně Cropper, uložení do úložiště a cesta do profilu. */
+  static photo(id, input) {
+    const f = input.files[0]; input.value = ''; if (!f || !/^image\//.test(f.type)) return;
+    const r = new FileReader(); r.onload = e => Users.editPhoto(id, e.target.result); r.readAsDataURL(f);
+  }
+  static editPhoto(id, src) {
+    src = src || Photos.url(DB.users[id].ph);
+    if (!src) return Sync.toast('Fotka se ještě načítá, zkuste to za chvilku.');
+    Cropper.open(src, url => Users.setPhoto(id, url, true));
+  }
+  static async setPhoto(id, url, isNew) {
+    const x = DB.users[id]; if (!x) return;
+    const old = x.ph; let ref = url;
+    if (isNew) {
+      try { ref = await Photos.upload('users', id, url); }
+      catch (e) { return Sync.toast('Fotku se nepodařilo nahrát (spustili jste aktuální schema.sql?): ' + (e.message || e)); }
+    }
+    const r = await Sync.write('Fotku se nepodařilo uložit', sb.rpc('admin_set_user_photo', {p_user: id, p_photo: ref}));
+    if (!r) { if (isNew) Photos.remove(ref); return; }
+    x.ph = ref; if (UI.user.id == id) UI.user.ph = ref;
+    if (old != ref) Photos.remove(old);
+    App.render();
   }
 
   static async save(id) {

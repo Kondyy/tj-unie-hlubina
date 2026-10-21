@@ -660,7 +660,18 @@ language sql stable security definer set search_path = public as
 $$ select case
      when public.photo_id(p_path) is null then false
      when p_path like 'players/%' then public.can_edit_player(public.photo_id(p_path))
-     else public.photo_id(p_path) = auth.uid() end $$;
+     else public.photo_id(p_path) = auth.uid() or public.is_admin() end $$;
+-- Správce nastaví fotku (cestu v úložišti, nebo prázdné = odebrat) kterémukoli uživateli
+create or replace function public.admin_set_user_photo(p_user uuid, p_photo text) returns void
+language plpgsql security definer set search_path = public as
+$$ begin
+  if not public.is_admin() then raise exception 'Jen správce.'; end if;
+  if coalesce(p_photo, '') <> '' and public.photo_id(p_photo) is distinct from p_user then raise exception 'Neplatná fotka.'; end if;
+  update public.profiles set photo = coalesce(p_photo, '') where id = p_user;
+end $$;
+revoke all on function public.admin_set_user_photo(uuid, text) from public, anon;
+grant execute on function public.admin_set_user_photo(uuid, text) to authenticated;
+
 revoke all on function public.photo_visible(text), public.photo_writable(text) from public, anon;
 grant execute on function public.photo_visible(text), public.photo_writable(text) to authenticated;
 
