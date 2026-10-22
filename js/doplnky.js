@@ -254,7 +254,7 @@ class SubCoach {
     return `<button class="btn" onclick="SubCoach.close()">← Tréninky</button><h2>🙋 Zástup ${esc(e.tm)} · ${Util.date(e.d)} · ${esc(e.t)}</h2>
       <div class="card ev ${e.k}"><div class="mut">📍 ${esc(e.pl)}${e.m ? ' · 🤝 Sraz: ' + esc(e.m) : ''}</div>${Weather.line(e)}</div>
       ${DB.eplans[e.id] ? `<div class="card"><b>📋 Plán tréninku</b><div style="white-space:pre-wrap;margin-top:6px">${esc(DB.eplans[e.id])}</div></div>` : ''}
-      ${L == null ? '<div class="card mut">Načítám hráče…</div>' : `<div class="g2">${L.map(p => `<div class="card"><b>${esc(p.full_name || p.short_name)}</b>
+      ${L == null ? Look.skeleton(3) : `<div class="g2">${L.map(p => `<div class="card"><b>${esc(p.full_name || p.short_name)}</b>
          <div class="mut">${p.response == 'y' ? '✔ potvrdil účast' : p.response == 'n' ? '✖ omluven' + (p.reason ? ' – ' + esc(p.reason) : '') : '⏳ bez odpovědi'}</div>
          <div class="row" style="margin-top:6px">${CONFIG.attStates.map(([c, l, k]) => `<button class="btn ${p.state == c ? k : ''}" onclick="SubCoach.mark(${e.id},'${p.id}','${c}')">${l}</button>`).join('')}</div></div>`).join('') || '<div class="card mut">Kategorie nemá hráče.</div>'}</div>`}`;
   }
@@ -323,8 +323,7 @@ class Progress {
   static card(m) {
     const M = Progress.months(m), N = (DB.notes[m.n] || []).filter(n => n.sh).slice().reverse();
     return `<div class="card"><b>📈 Vývoj</b>
-      ${M.length ? `<div class="mut" style="margin-top:4px">Docházka na tréninky po měsících</div>${M.map(x => `<div class="pay" style="margin-top:6px"><span>${Report.label(x.k)}</span><b class="${Util.attCls(x.pct)}">${x.pct} % <span class="mut">(${x.p}/${x.t})</span></b></div>
-        <div class="bar"><i style="width:${Math.max(x.pct, 2)}%;background:${Util.attBg(x.pct)}"></i></div>`).join('')}` : '<div class="mut" style="margin-top:4px">Docházka po měsících se ukáže, jakmile trenér zapíše první tréninky.</div>'}
+      ${M.length ? `<div class="mut" style="margin-top:4px">Docházka na tréninky po měsících</div>${Charts.bars(M.map(x => ({l: Charts.MON[+x.k.slice(5) - 1], sub: `${x.p}/${x.t}`, v: x.pct, top: x.pct + ' %', c: {g: '', y: 'y', r: 'r'}[Util.attLvl(x.pct)]})))}` : '<div class="mut" style="margin-top:4px">Docházka po měsících se ukáže, jakmile trenér zapíše první tréninky.</div>'}
       <div class="row" style="margin-top:10px"><div class="card stat"><b>${m.mp}</b><span class="mut">Zápasy</span></div><div class="card stat"><b>${m.gl}</b><span class="mut">Góly</span></div>
         <div class="card stat"><b>${m.mp ? (m.gl / m.mp).toFixed(1).replace('.', ',') : '0'}</b><span class="mut">Gólů na zápas</span></div></div>
       ${N.length ? `<div style="margin-top:10px"><b>💬 Od trenéra</b>${N.map(n => `<div class="pl"><span>${CONFIG.noteTags[n.g].slice(0, 2)} ${esc(n.x)}</span><span class="mut">${esc(n.d)}</span></div>`).join('')}</div>` : ''}</div>`;

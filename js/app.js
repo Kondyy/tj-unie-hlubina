@@ -1,4 +1,4 @@
-/* TJ Unie Hlubina – 5/5 aplikace: záložky podle role, vykreslení stránky a start. */
+/* TJ Unie Hlubina – 6/6 aplikace: záložky podle role, vykreslení stránky a start. */
 /* =====================================================================
    9. App – záložky podle role (p rodič, c trenér, v vedení, a správce) a vykreslení stránky
    ===================================================================== */
@@ -45,6 +45,7 @@ class App {
     }
     if (UI.toast) root.insertAdjacentHTML('beforeend', `<div class="toast ${UI.toastOk ? 'good' : ''}" role="status">${esc(UI.toast)}</div>`);
     App.restore(root, keep);
+    Look.after(root);                                                 // ikony místo emoji, odpočet akce, přechod záložek (js/vzhled.js)
     if (!UI.user) Captcha.mount();
     // po vykreslení: chat odroluj dolů a případně vrať kurzor do pole zprávy
     const box = $('#chat-box'); if (box) box.scrollTop = box.scrollHeight;

@@ -6,6 +6,25 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 22. 10. 2026 (nový vzhled)
+
+Nový vzhled v barvách klubu (červená a modrá z loga). Všechny dosavadní funkce zůstaly, mění se jen podoba a přibylo pár pomůcek. Databáze se nemění.
+
+- **Barvy klubu a logo** všude: hlavní tlačítka a aktivní záložky v červeno-modrém přechodu, tmavá spodní lišta.
+- **Sportovní písmo** nadpisů a čísel (Barlow Condensed), text v písmu Inter. Bez internetu se použije písmo telefonu.
+- **Ikony místo emoji**: jednotné čárové ikony vypadají na všech telefonech stejně. Emoji v chatu zůstávají.
+- **Obrazovka „Dnes“**: nahoře v Přehledu (rodič) a v Trénincích (trenér) nejbližší akce s odpočtem a tlačítky Přijdu / Omluvit / Navigovat, u trenéra Otevřít docházku / zápas.
+- **Barvy akcí**: trénink zelený, zápas modrý, zrušená akce červená a přeškrtnutá.
+- **Docházka jako mřížka fotek**: klepnutím na fotku se přepíná Přítomen → Omluven → Neomluven. Původní podrobný seznam je o jedno tlačítko vedle (telefon si volbu pamatuje).
+- **Grafy**: docházka po měsících v profilu hráče, forma týmu (V/R/P) v odehraných zápasech, nedoplatky podle příspěvků u plateb, průměrná docházka kategorií v přehledu docházky.
+- **Obrázek výsledku pro sítě**: u odehraného zápasu tlačítko 🖼, vytvoří čtvercový obrázek pro Facebook / Instagram (v telefonu rovnou Sdílet).
+- **Světlý režim** podle telefonu, nebo ručně v **Nastavení → Vzhled**; tam je i **větší písmo a tlačítka**.
+- **Úvodní obrazovka s logem**, šedé obrysy obsahu při načítání, prázdné stavy s radou, co dál, velká fajfka po uložení.
+- **Počítač**: menu záložek vlevo, obsah vpravo.
+- **Ikona na ploše iPhonu**: logo s průhledným pozadím (`icon-ios.png`).
+
+---
+
 ## 22. 10. 2026 (úprava)
 
 - Odstraněna **diskuse k akci** a tlačítko **📤 Sdílet**.
