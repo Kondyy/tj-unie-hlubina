@@ -17,8 +17,7 @@ class Venues {
   static navLinks(n) {
     if (!n) return '';
     const t = encodeURIComponent(Venues.target(n));
-    return `<div class="row" style="margin-top:8px"><a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${t}">🧭 Navigovat</a>
-      <a class="btn" target="_blank" rel="noopener" href="https://mapy.com/fnc/v1/search?query=${t}">🗺 Mapy.com</a></div>`;
+    return `<div class="row" style="margin-top:8px"><a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${t}">🧭 Navigovat</a></div>`;
   }
   /** Výběr místa ve formuláři; poslední volba „Nové místo…“ založí místo s adresou. */
   static select(id, cur) {
