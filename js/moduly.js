@@ -80,7 +80,7 @@ class Calendar {
         ${r && r.s == 'n' ? `<div class="mut">Omluven: ${r.r}${r.x ? ' – ' + esc(r.x) : ''}</div>` : ''}
         ${e.k == 'z' ? Calendar.carpoolSelect(k) : ''}`}
       ${e.x ? '' : Bring.parent(e) + Carpool.list(e) + (e.tour ? Tour.summary(e) : '')}
-      ${e.x || e.k != 'z' ? '' : `<div class="row" style="margin-top:8px"><a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(Venues.target(e.pl))}">🧭 Navigovat</a></div>`}
+      ${e.x ? '' : `<div class="row" style="margin-top:8px"><a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(Venues.target(e.pl))}">🧭 Navigovat</a></div>`}
     </div>`;
   }
 
@@ -341,7 +341,7 @@ class Attendance {
     }
     return `<button class="btn" onclick="Attendance.close()">← Tréninky</button>        <!-- 2) detail tréninku -->
       <h2>${Util.date(e.d)} · ${e.t} · ${esc(e.pl)}</h2>${Weather.line(e)}${Attendance.coachCard(e)}
-      <div class="row" style="margin-top:10px">${Events.notifyBtn(e)}</div>${OfflineQ.badge()}${Attendance.answers(e)}
+      <div class="row" style="margin-top:10px">${Events.notifyBtn(e)}</div>${Venues.placeBox(e)}${OfflineQ.badge()}${Attendance.answers(e)}
       <button class="btn ok" style="width:100%;margin-top:10px" onclick="Attendance.allPresent(${e.id})">✔ Všichni ostatní přítomni</button>
       <div class="g2" style="margin-top:10px">${Model.membersOf(team).map(m => {
         const a = DB.att[e.id + '|' + m.n], p = Model.attPct(m), [ps, tt] = Model.attCount(m);
@@ -431,7 +431,7 @@ class Events {
     return `<button class="btn" onclick="Events.closeMatch()">← Zápasy</button>
       <h2>${e.tour ? '🏅 Turnaj: ' : '🏆 vs. '}${esc(e.o)} · ${Util.date(e.d)} · ${esc(e.t)}</h2>
       <div class="card ev ${e.x ? 'x' : e.k}"><div class="pay"><b>📍 ${esc(e.pl)} · ${e.tour ? 'turnaj ' : 'vs. '}${esc(e.o)}</b><span class="pill ${e.x ? 'x' : 'z'}">${e.x ? 'Zrušeno' : e.tour ? 'Turnaj' : 'Zápas'}</span></div>
-        ${Weather.line(e)}${Venues.navLinks(e.pl)}
+        ${Weather.line(e)}${Venues.placeBox(e)}
         <div class="row" style="margin-top:8px">
           ${!e.x ? `<button class="btn" onclick="Events.toggleNomination('${e.id}')">${e.nc ? '🔒 ' : ''}Nominace (${(DB.nominations[e.id] || []).length})</button>` : ''}
           ${!e.x && !e.tour ? `<button class="btn" onclick="Events.toggleResult('${e.id}')">🏁 Výsledek</button>` : ''}
@@ -2059,6 +2059,7 @@ class Settings {
       ${Settings.chatRetention()}
       ${Settings.calendar()}
       ${u.r == 'v' ? '' : Tpl.card()}
+      ${u.r == 'p' ? '' : Venues.adminCard()}
       ${Report.card()}
       <div class="card"><b>📤 Export statistik do Excelu</b>
         <div class="mut">${u.r == 'p' ? 'Docházka a statistiky vašeho dítěte.' : u.r == 'c' ? 'Docházka hráčů a trenérů vaší kategorie a výsledky zápasů.' : 'Docházka hráčů a trenérů všech kategorií a výsledky zápasů.'}</div>
