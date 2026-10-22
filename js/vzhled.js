@@ -189,6 +189,24 @@ class Look {
     d.classList.add('show'); clearTimeout(Look.dt); Look.dt = setTimeout(() => d.classList.remove('show'), 900);
   }
   static tap() { try { navigator.vibrate && navigator.vibrate(10); } catch (e) {} }
+  /** Zásobník už dekódovaných fotek (podle adresy), aby se při překreslení nebo návratu na stránku nedekódovaly znovu. */
+  static pool = new Map();
+  /** Před překreslením: přidá zobrazené fotky do zásobníku. */
+  static keepImgs(root) {
+    const M = Look.pool;
+    root.querySelectorAll('img.av').forEach(i => { const s = i.getAttribute('src'), L = s && (M.get(s) || M.set(s, []).get(s)); if (L && !L.includes(i)) L.push(i); });
+    if (M.size > 300) M.delete(M.keys().next().value);
+    return M;
+  }
+  /** Po překreslení: nové <img> nahradí odloženými se stejnou fotkou (telefon je nemusí znovu dekódovat). */
+  static reuseImgs(root, M) {
+    if (!M.size) return;
+    root.querySelectorAll('img.av').forEach(n => {
+      const L = M.get(n.getAttribute('src')), o = L && L.find(x => !x.isConnected); if (!o) return;
+      for (const a of ['class', 'style', 'alt']) { const v = n.getAttribute(a); if (v == null) o.removeAttribute(a); else if (o.getAttribute(a) != v) o.setAttribute(a, v); }
+      n.replaceWith(o);
+    });
+  }
   /** Po vykreslení: ikony, odpočty, plynulý přechod při změně záložky. */
   static after(root) {
     Icons.apply(root);
@@ -272,15 +290,27 @@ class AttGrid {
   static isList() { return Theme.get(AttGrid.KEY, '0') == '1'; }
   static setList(on) { Theme.put(AttGrid.KEY, on ? '1' : '0'); App.render(); }
   static NEXT = {P: 'O', O: 'N', N: 'P'};
-  static tap(id, name) { const a = DB.att[id + '|' + name]; Look.tap(); Attendance.mark(id, name, a ? AttGrid.NEXT[a] : 'P'); }
+  /** Klepnutí na fotku: přepne značku a překreslí jen tuto dlaždici a počet (celá stránka se nepřekresluje). */
+  static tap(id, name) {
+    const a = DB.att[id + '|' + name], s = a ? AttGrid.NEXT[a] : 'P'; Look.tap();
+    const el = [...document.querySelectorAll('.pg .pt')].find(x => x.dataset.k == name);
+    if (!el) return Attendance.mark(id, name, s);
+    Attendance.mark(id, name, s, true);
+    el.className = 'pt ' + s;
+    let st = el.querySelector('.st'); if (!st) { st = document.createElement('span'); st.className = 'st'; el.querySelector('.nm').before(st); }
+    st.textContent = s;
+    el.setAttribute('aria-label', el.dataset.f + ': ' + CONFIG.attStates.find(x => x[0] == s)[1]);
+    const e = Model.event(id), here = e ? Model.membersOf(e.tm).filter(m => DB.att[e.id + '|' + m.n] == 'P').length : 0, c = document.getElementById('pg-here');
+    if (c && e) c.textContent = `${here} / ${Model.membersOf(e.tm).length} přítomno`;
+  }
   static view(e) {
     const L = Model.membersOf(e.tm), here = L.filter(m => DB.att[e.id + '|' + m.n] == 'P').length;
     const ans = {ok: '✔', no: '✖', wa: '⏳'};
-    return `<div class="pay" style="margin-top:14px"><h2 style="margin:0">Docházka</h2><span class="pill ok">${here} / ${L.length} přítomno</span></div>
+    return `<div class="pay" style="margin-top:14px"><h2 style="margin:0">Docházka</h2><span class="pill ok" id="pg-here">${here} / ${L.length} přítomno</span></div>
       <div class="mut" style="margin:4px 0 10px">Klepnutím na fotku: Přítomen → Omluven → Neomluven. Vlevo nahoře je odpověď rodiče.</div>
       <div class="pg">${L.map(m => {
         const a = DB.att[e.id + '|' + m.n] || '', an = Events.answer(m.n, e.id);
-        return `<button class="pt ${a}" onclick="AttGrid.tap('${e.id}','${Util.q(m.n)}')" title="${esc(m.full || m.n)} · ${an[1].replace(/<[^>]*>/g, '')}" aria-label="${esc(m.full || m.n)}: ${a ? CONFIG.attStates.find(s => s[0] == a)[1] : 'bez značky'}">
+        return `<button class="pt ${a}" data-k="${esc(m.n)}" data-f="${esc(m.full || m.n)}" onclick="AttGrid.tap('${e.id}','${Util.q(m.n)}')" title="${esc(m.full || m.n)} · ${an[1].replace(/<[^>]*>/g, '')}" aria-label="${esc(m.full || m.n)}: ${a ? CONFIG.attStates.find(s => s[0] == a)[1] : 'bez značky'}">
           ${Util.avatar(m, 104)}<span class="an ${an[0]}">${ans[an[0]]}</span>${a ? `<span class="st">${a}</span>` : ''}<span class="nm">${esc(m.full || m.n)}</span></button>`;
       }).join('')}</div>
       <button class="btn" style="width:100%;margin-top:10px" onclick="AttGrid.setList(true)">📋 Podrobný seznam (procenta, odpovědi rodičů)</button>`;

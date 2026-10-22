@@ -247,7 +247,7 @@ class Util {
   /** Kulatý avatar hráče: fotka, nebo barevné iniciály. */
   static avatar(m, size) {
     const src = Photos.src(m.ph);
-    if (src) return `<img class="av" style="width:${size}px;height:${size}px" src="${src}" alt="Fotka hráče">`;
+    if (src) return `<img class="av" style="width:${size}px;height:${size}px" src="${src}" alt="Fotka hráče" decoding="async">`;
     const h = Util.hue(m.n);
     return `<div class="av" ${Photos.isPath(m.ph) ? `data-ph="${m.ph}"` : ''} style="width:${size}px;height:${size}px;font-size:${Math.round(size*.38)}px;background:linear-gradient(135deg,hsl(${h},65%,45%),hsl(${(h+50)%360},65%,32%))">${Util.esc(Util.initials(m))}</div>`;
   }

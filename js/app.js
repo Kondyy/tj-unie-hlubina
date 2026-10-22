@@ -31,7 +31,7 @@ TABS.a = [...TABS.v.filter(t => t.id != 'set'), ...TABS.c.filter(t => t.id != 'p
 class App {
   /** Vykreslí celou stránku (přihlašovací obrazovku, nebo hlavičku + záložky + obsah). */
   static render() {
-    const root = $('#app'), keep = App.capture(root);
+    const root = $('#app'), keep = App.capture(root), imgs = Look.keepImgs(root);
     if (!UI.user) root.innerHTML = Auth.view();
     else {
       const u = UI.user;
@@ -45,6 +45,7 @@ class App {
     }
     if (UI.toast) root.insertAdjacentHTML('beforeend', `<div class="toast ${UI.toastOk ? 'good' : ''}" role="status">${esc(UI.toast)}</div>`);
     App.restore(root, keep);
+    Look.reuseImgs(root, imgs);                                       // už načtené fotky se znovu nedekódují (plynulé překreslení)
     Look.after(root);                                                 // ikony místo emoji, odpočet akce, přechod záložek (js/vzhled.js)
     if (!UI.user) Captcha.mount();
     // po vykreslení: chat odroluj dolů a případně vrať kurzor do pole zprávy

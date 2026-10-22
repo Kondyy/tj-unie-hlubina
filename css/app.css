@@ -250,7 +250,7 @@ html.big h2{font-size:24px}
 
 /* Docházka jako mřížka fotek: klepnutí přepíná Přítomen → Omluven → Neomluven */
 .pg{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
-.pt{position:relative;aspect-ratio:1/1.18;max-width:100%;border-radius:14px;overflow:hidden;cursor:pointer;border:3px solid var(--bd);padding:0;background:var(--gl2);color:#fff;font:inherit;-webkit-user-select:none;user-select:none}
+.pt{position:relative;aspect-ratio:1/1.18;max-width:100%;border-radius:14px;overflow:hidden;cursor:pointer;border:3px solid var(--bd);padding:0;background:var(--gl2);color:#fff;font:inherit;-webkit-user-select:none;user-select:none;touch-action:manipulation;contain:layout paint}
 .pt .av{position:absolute;inset:0;width:100%!important;height:100%!important;border-radius:0;border:0;font:800 30px var(--disp)!important;margin:0}
 .pt .nm{position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);font-size:11.5px;padding:4px 4px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pt .st{position:absolute;top:5px;right:5px;width:26px;height:26px;border-radius:50%;font:700 13px/26px var(--body);text-align:center;background:rgba(0,0,0,.45);color:#fff}
