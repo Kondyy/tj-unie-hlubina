@@ -13,6 +13,7 @@ Docházka jako mřížka fotek se už nezasekává. Databáze se nemění.
 - Klepnutí na fotku přepne jen tu jednu dlaždici a počet přítomných. Dřív se po každém klepnutí celá stránka překreslila třikrát (klepnutí, uložení a odpověď serveru).
 - Už načtené fotky se při překreslení a návratu na stránku znovu nedekódují a telefon je dekóduje mimo hlavní vlákno.
 - Když se ze serveru vrátí jen vlastní změna docházky, stránka se znovu nepřekresluje.
+- Plynulé posouvání (hlavně mřížky fotek): pozadí se zářemi je pevná vrstva místo `background-attachment:fixed` a karty, hlavička a spodní lišta už nepoužívají rozmazání pozadí (`backdrop-filter`). Vzhled zůstává stejný, telefon ale při posouvání nemusí každý snímek znovu kreslit celou obrazovku.
 
 ---
 
