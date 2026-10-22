@@ -109,7 +109,7 @@ const CONFIG = {
 const DB = {
   users: {}, members: [], docs: {}, events: [], results: [], payItems: [], plan: [], messages: [],
   chats: {}, notifs: [], links: [], settings: {}, dm: [], dmContacts: [], tcoaches: [], aper: [], calTok: undefined, dmErr: '', pabs: {}, prefs: {},
-  venues: [], ecom: {}, eplans: {}, ttpl: [], tpls: [], cpool: {}, cpPeers: {}, subPl: null,   // doplňky v4 (místa, diskuse, plány, šablony, spolujízda, zástup)
+  venues: [], eplans: {}, ttpl: [], tpls: [], cpool: {}, cpPeers: {}, subPl: null,   // doplňky v4 (místa, plány, šablony, spolujízda, zástup)
   att: {},          // docházka:        "idUdálosti|jménoHráče"  → 'P' | 'O' | 'N'
   coachEv: {},      // druh a datum události u účasti trenéra: "idTrenéra|idUdálosti" → {k:'t', d:'2026-10-12'}
   coachNm: {},      // příjmení trenéra u jeho účasti: "idTrenéra|idUdálosti" → 'Kondaš'
@@ -173,7 +173,7 @@ const UI = {
   ai: null,              // import docházky z tabulky (náhled / výsledek)
   parSearch: '', dmWith: '', dmSearch: '',   // hledání rodičů; soukromé zprávy: otevřená konverzace, hledání osoby
   more: false,           // mobil: otevřená nabídka „Více“ ve spodní liště
-  noteQ: '', noteF: 'all', ecOpen: 0, subEvent: 0, repMonth: '', kidEdit: false, offlineAt: 0,   // doplňky v4
+  noteQ: '', noteF: 'all', subEvent: 0, repMonth: '', kidEdit: false, offlineAt: 0,   // doplňky v4
   recovery: false        // po kliknutí na odkaz „zapomenuté heslo“ v e-mailu
 };
 

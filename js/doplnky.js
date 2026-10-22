@@ -1,6 +1,6 @@
-/* TJ Unie Hlubina – 4/5 doplňky: místa, počasí, diskuse, spolujízda, plán tréninku, turnaje, zástup, offline… */
+/* TJ Unie Hlubina – 4/5 doplňky: místa, počasí, spolujízda, plán tréninku, turnaje, zástup, offline… */
 /* =====================================================================
-   8b. DOPLŇKY – místa a navigace, počasí, co s sebou, sdílení, diskuse u akce, spolujízda,
+   8b. DOPLŇKY – místa a navigace, počasí, co s sebou, spolujízda,
        plán tréninku, turnaje, zástup trenéra, měsíční výkaz, deník s připomínkami, šablony zpráv,
        docházka bez internetu, offline režim, hlášení chyb, využití tarifu, ochrana přihlášení
    ===================================================================== */
@@ -35,7 +35,7 @@ class Venues {
   }
   /** Správa: adresy míst. */
   static adminCard() {
-    return `<div class="card"><b>📍 Místa a adresy</b><div class="mut">Adresa se použije pro tlačítko „Navigovat“ u tréninků a zápasů. Trenéři můžou přidat nové místo přímo při zakládání zápasu.</div>
+    return `<div class="card"><b>📍 Místa a adresy</b><div class="mut">Adresa se použije pro tlačítko „Navigovat“ u zápasů. Trenéři můžou přidat nové místo přímo při zakládání zápasu.</div>
       ${Venues.list().map(v => `<div class="row" style="margin-top:6px;align-items:center"><b style="flex:0 0 34%">${esc(v.name)}</b>
         <input id="vn-${v.id}" value="${esc(v.address)}" placeholder="Adresa" autocomplete="off">
         ${v.id ? `<button class="btn" style="flex:none" onclick="Venues.save(${v.id})">Uložit</button><button class="chip" style="flex:none;color:var(--r)" onclick="Venues.del(${v.id})">🗑</button>` : ''}</div>`).join('')}
@@ -113,58 +113,6 @@ class Bring {
   static async save(id) {
     const e = Model.event(id), v = ($('#br-' + id).value || '').trim().slice(0, 300);
     if (await Sync.write('Seznam se nepodařilo uložit', sb.from('events').update({bring: v}).eq('id', id))) { e.br = v; Sync.toast('✔ Seznam uložen.', true); }
-  }
-}
-
-
-/* ---------------------------------------------------------------------
-   Share – sdílení akce do WhatsAppu / SMS (sdílecí nabídka telefonu, jinak zkopírování textu)
-   --------------------------------------------------------------------- */
-class Share {
-  static text(e) {
-    return `${e.k == 'z' ? (e.tour ? '🏅 Turnaj ' : '🏆 Zápas ') + e.tm + (e.tour ? ': ' : ' vs. ') + e.o : '⚽ Trénink ' + e.tm}${e.x ? ' – ZRUŠENO' : ''}
-🕒 ${Util.date(e.d)} v ${e.t}
-📍 ${e.pl}${e.m ? '\n🤝 Sraz: ' + e.m : ''}${e.br ? '\n🎒 ' + e.br : ''}
-🧭 https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(Venues.target(e.pl))}`;
-  }
-  static btn(e) { return `<button class="btn" onclick="event.stopPropagation();Share.go(${e.id})">📤 Sdílet</button>`; }
-  static async go(id) {
-    const e = Model.event(id); if (!e) return;
-    const text = Share.text(e);
-    if (navigator.share) { try { await navigator.share({title: CLUB, text}); return; } catch (x) { if (x && x.name == 'AbortError') return; } }
-    try { await navigator.clipboard.writeText(text); Sync.toast('✔ Zkopírováno – vložte do WhatsAppu nebo SMS.', true); }
-    catch (x) { window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank', 'noopener'); }
-  }
-}
-
-
-/* ---------------------------------------------------------------------
-   Comments – diskuse u konkrétního tréninku / zápasu (vidí ji, kdo vidí akci)
-   Píše-li rodič, přijde upozornění trenérům kategorie; píše-li trenér, rodičům kategorie (hlídá databáze).
-   --------------------------------------------------------------------- */
-class Comments {
-  static box(e) {
-    const L = DB.ecom[e.id] || [], open = UI.ecOpen == e.id, u = UI.user;
-    return `<div style="margin-top:8px"><button class="chip ${open ? 'on' : ''}" onclick="event.stopPropagation();Comments.toggle(${e.id})">💬 Diskuse k akci${L.length ? ' (' + L.length + ')' : ''}</button>
-      ${open ? `<div class="chat" style="margin-top:8px;max-height:260px">${L.map(c => `<div class="bub ${c.fid == u.id ? 'me' : ''}"><div class="nm"><b>${esc(c.f)}</b>${c.role != 'Rodič' ? `<span class="pill ok">${esc(c.role)}</span>` : ''}</div>${esc(c.x)}
-          <div class="tm">${esc(c.t)}${c.fid == u.id || Model.mgmt(u) ? ` · <a href="#" style="color:inherit" onclick="Comments.del(${c.id},${e.id});return false">smazat</a>` : ''}</div></div>`).join('') || '<div class="mut">Zatím bez komentářů. Napište dotaz nebo informaci k této akci.</div>'}</div>
-        <div class="cin"><input id="ec-${e.id}" autocomplete="off" placeholder="Napsat k této akci…" onkeydown="if(event.key==='Enter')Comments.send(${e.id})"><button class="btn ok" onclick="Comments.send(${e.id})">Odeslat</button></div>` : ''}</div>`;
-  }
-  static toggle(id) { UI.ecOpen = UI.ecOpen == id ? 0 : id; App.render(); }
-  static row(r) { return {id: r.id, fid: r.sender_id, f: r.sender_name, role: r.sender_role, x: r.body, t: Util.stamp(r.created_at)}; }
-  static async send(id) {
-    const i = $('#ec-' + id), text = i && i.value.trim(); if (!text) return;
-    i.value = '';
-    const r = await Sync.write('Komentář se nepodařilo odeslat', sb.from('event_comments').insert({event_id: id, body: text.slice(0, 1000)}).select().single());
-    if (!r) { const j = $('#ec-' + id); if (j) j.value = text; return; }
-    const L = DB.ecom[id] = DB.ecom[id] || [];
-    if (!L.some(c => c.id == r.data.id)) L.push(Comments.row(r.data));
-    UI.skipKeep = ['ec-' + id]; App.render();
-    const j = $('#ec-' + id); if (j) j.focus();
-  }
-  static async del(cid, eid) {
-    if (!confirm('Smazat komentář?')) return;
-    if (await Sync.write('Komentář se nepodařilo smazat', sb.from('event_comments').delete().eq('id', cid))) { DB.ecom[eid] = (DB.ecom[eid] || []).filter(c => c.id != cid); App.render(); }
   }
 }
 
@@ -290,7 +238,7 @@ class SubCoach {
   static detail(e) {
     const L = DB.subPl;
     return `<button class="btn" onclick="SubCoach.close()">← Tréninky</button><h2>🙋 Zástup ${esc(e.tm)} · ${Util.date(e.d)} · ${esc(e.t)}</h2>
-      <div class="card ev ${e.k}"><div class="mut">📍 ${esc(e.pl)}${e.m ? ' · 🤝 Sraz: ' + esc(e.m) : ''}</div>${Weather.line(e)}${Venues.navLinks(e.pl)}${Comments.box(e)}</div>
+      <div class="card ev ${e.k}"><div class="mut">📍 ${esc(e.pl)}${e.m ? ' · 🤝 Sraz: ' + esc(e.m) : ''}</div>${Weather.line(e)}</div>
       ${DB.eplans[e.id] ? `<div class="card"><b>📋 Plán tréninku</b><div style="white-space:pre-wrap;margin-top:6px">${esc(DB.eplans[e.id])}</div></div>` : ''}
       ${L == null ? '<div class="card mut">Načítám hráče…</div>' : `<div class="g2">${L.map(p => `<div class="card"><b>${esc(p.full_name || p.short_name)}</b>
          <div class="mut">${p.response == 'y' ? '✔ potvrdil účast' : p.response == 'n' ? '✖ omluven' + (p.reason ? ' – ' + esc(p.reason) : '') : '⏳ bez odpovědi'}</div>

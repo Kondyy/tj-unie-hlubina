@@ -80,8 +80,7 @@ class Calendar {
         ${r && r.s == 'n' ? `<div class="mut">Omluven: ${r.r}${r.x ? ' – ' + esc(r.x) : ''}</div>` : ''}
         ${e.k == 'z' ? Calendar.carpoolSelect(k) : ''}`}
       ${e.x ? '' : Bring.parent(e) + Carpool.list(e) + (e.tour ? Tour.summary(e) : '')}
-      ${e.x ? '' : `<div class="row" style="margin-top:8px">${Share.btn(e)}<a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(Venues.target(e.pl))}">🧭 Navigovat</a></div>`}
-      ${Comments.box(e)}
+      ${e.x || e.k != 'z' ? '' : `<div class="row" style="margin-top:8px"><a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(Venues.target(e.pl))}">🧭 Navigovat</a></div>`}
     </div>`;
   }
 
@@ -330,7 +329,7 @@ class Attendance {
         const k = Attendance.marked(t);
         return `<div class="card ev ${t.x ? 'x' : 't'}" ${t.x ? '' : `style="cursor:pointer" onclick="Attendance.open('${t.id}')"`}>
           <div class="pay"><b>⚽ ${Util.date(t.d)} · ${t.t}</b><span class="pill ${t.x ? 'x' : k == count ? 'ok' : 'wa'}">${t.x ? 'Zrušeno' : k + '/' + count + ' označeno'}</span></div>
-          <div class="mut">📍 ${esc(t.pl)}${t.sc ? ' · 🙋 zástup: ' + esc(t.c) : ''}${(DB.ecom[t.id] || []).length ? ' · 💬 ' + DB.ecom[t.id].length : ''}</div>${Weather.line(t)}${t.x ? '' : '<div class="mut">Klepnutím otevřete docházku →</div>'}
+          <div class="mut">📍 ${esc(t.pl)}${t.sc ? ' · 🙋 zástup: ' + esc(t.c) : ''}</div>${Weather.line(t)}${t.x ? '' : '<div class="mut">Klepnutím otevřete docházku →</div>'}
           <div class="row" style="margin-top:8px"><button class="btn" onclick="event.stopPropagation();Events.cancel('${t.id}')">${t.x ? 'Obnovit trénink' : 'Zrušit trénink'}</button><button class="btn" style="flex:none;color:var(--r)" onclick="event.stopPropagation();Events.remove('${t.id}')">🗑 Smazat</button></div></div>`;
       }).join('') || '<div class="card mut">Tento týden zatím žádný trénink. Tréninky se přidají automaticky podle rozvrhu hřišť, který nastavuje vedení.</div>'}</div>
       <h2>+ Přidat trénink ručně</h2><div class="card">
@@ -342,7 +341,7 @@ class Attendance {
     }
     return `<button class="btn" onclick="Attendance.close()">← Tréninky</button>        <!-- 2) detail tréninku -->
       <h2>${Util.date(e.d)} · ${e.t} · ${esc(e.pl)}</h2>${Weather.line(e)}${Attendance.coachCard(e)}
-      <div class="row" style="margin-top:10px">${Events.notifyBtn(e)}${Share.btn(e)}</div>${Venues.navLinks(e.pl)}${OfflineQ.badge()}${Attendance.answers(e)}
+      <div class="row" style="margin-top:10px">${Events.notifyBtn(e)}</div>${OfflineQ.badge()}${Attendance.answers(e)}
       <button class="btn ok" style="width:100%;margin-top:10px" onclick="Attendance.allPresent(${e.id})">✔ Všichni ostatní přítomni</button>
       <div class="g2" style="margin-top:10px">${Model.membersOf(team).map(m => {
         const a = DB.att[e.id + '|' + m.n], p = Model.attPct(m), [ps, tt] = Model.attCount(m);
@@ -352,7 +351,7 @@ class Attendance {
           <div class="bar" style="margin:8px 0"><i style="width:${p}%;background:${Util.attBg(p)}"></i></div>
           <div class="row">${CONFIG.attStates.map(([c, l, k]) => `<button class="btn ${a == c ? k : ''}" onclick="Attendance.mark('${e.id}','${Util.q(m.n)}','${c}')">${l}</button>`).join('')}</div></div>`;
       }).join('')}</div>
-      ${TPlan.card(e)}${Bring.coach(e)}${SubCoach.card(e)}<div class="card" style="margin-top:10px">${Comments.box(e)}</div>`;
+      ${TPlan.card(e)}${Bring.coach(e)}${SubCoach.card(e)}`;
   }
 
   /** Souhrn odpovědí rodičů k tréninku: kolik potvrdilo, omluvilo se a nereagovalo. */
@@ -436,10 +435,10 @@ class Events {
         <div class="row" style="margin-top:8px">
           ${!e.x ? `<button class="btn" onclick="Events.toggleNomination('${e.id}')">${e.nc ? '🔒 ' : ''}Nominace (${(DB.nominations[e.id] || []).length})</button>` : ''}
           ${!e.x && !e.tour ? `<button class="btn" onclick="Events.toggleResult('${e.id}')">🏁 Výsledek</button>` : ''}
-          ${Events.notifyBtn(e)}${Share.btn(e)}
+          ${Events.notifyBtn(e)}
           <button class="btn" onclick="Events.cancel(${e.id})">${e.x ? 'Obnovit' : 'Zrušit'}</button><button class="btn" style="flex:none;color:var(--r)" onclick="Events.remove(${e.id})">🗑 Smazat</button></div>
         ${e.x ? '' : Attendance.coachCard(e, true)}${UI.nomEvent == e.id ? Events.nominationBox(e) : ''}${UI.resEvent == e.id ? Events.resultBox(e) : ''}
-        ${e.x ? '' : Carpool.list(e)}${Comments.box(e)}</div>
+        ${e.x ? '' : Carpool.list(e)}</div>
       ${e.x || !e.tour ? '' : Tour.box(e)}
       ${e.x ? '' : Events.confirmBox(e) + Bring.coach(e) + SubCoach.card(e)}`;
   }
