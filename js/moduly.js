@@ -80,7 +80,7 @@ class Calendar {
         ${r && r.s == 'n' ? `<div class="mut">Omluven: ${r.r}${r.x ? ' – ' + esc(r.x) : ''}</div>` : ''}
         ${e.k == 'z' ? Calendar.carpoolSelect(k) : ''}`}
       ${e.x ? '' : Bring.parent(e) + Carpool.list(e) + (e.tour ? Tour.summary(e) : '')}
-      ${e.x ? '' : `<div class="row" style="margin-top:8px"><a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(Venues.target(e.pl))}">🧭 Navigovat</a></div>`}
+      ${e.x || e.k != 'z' ? '' : `<div class="row" style="margin-top:8px"><a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(Venues.target(e.pl))}">🧭 Navigovat</a></div>`}
     </div>`;
   }
 

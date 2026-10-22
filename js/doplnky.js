@@ -24,11 +24,11 @@ class Venues {
     const L = Venues.names(); if (cur && !L.includes(cur)) L.unshift(cur);
     return `<select id="${id}" onchange="if(this.value=='__new')Venues.add(this)">${L.map(v => `<option ${v == cur ? 'selected' : ''}>${esc(v)}</option>`).join('')}<option value="__new">➕ Nové místo…</option></select>`;
   }
-  /** Trenér: změna místa u konkrétního tréninku / zápasu + navigace na něj. */
+  /** Trenér: změna místa u konkrétního tréninku / zápasu (navigace jen u zápasů). */
   static placeBox(e) {
     if (e.x) return '';
     return `<div class="row" style="margin-top:8px;align-items:center"><span style="flex:none">📍 Místo</span>${Venues.select('pl-' + e.id, e.pl)}
-      <button class="btn" style="flex:none" onclick="event.stopPropagation();Venues.setPlace(${e.id})">Uložit</button></div>${Venues.navLinks(e.pl)}`;
+      <button class="btn" style="flex:none" onclick="event.stopPropagation();Venues.setPlace(${e.id})">Uložit</button></div>${e.k == 'z' ? Venues.navLinks(e.pl) : ''}`;
   }
   static async setPlace(id) {
     const e = Model.event(id), s = $('#pl-' + id), place = s && s.value;
@@ -48,7 +48,7 @@ class Venues {
   /** Správa a Nastavení trenéra: adresy míst pro navigaci (mazat může jen vedení). */
   static adminCard() {
     const del = Model.mgmt(UI.user);
-    return `<div class="card"><b>📍 Místa pro navigaci</b><div class="mut">Adresa se použije pro tlačítko „Navigovat“ u tréninků a zápasů. Místo konkrétní akce změníte v jejím detailu.</div>
+    return `<div class="card"><b>📍 Místa pro navigaci</b><div class="mut">Adresa se použije pro tlačítko „Navigovat“ u zápasů. Místo konkrétní akce změníte v jejím detailu.</div>
       ${Venues.list().map(v => `<div class="row" style="margin-top:6px;align-items:center"><b style="flex:0 0 34%">${esc(v.name)}</b>
         <input id="vn-${v.id}" value="${esc(v.address)}" placeholder="Adresa" autocomplete="off">
         ${v.id ? `<button class="btn" style="flex:none" onclick="Venues.save(${v.id})">Uložit</button>${del ? `<button class="chip" style="flex:none;color:var(--r)" onclick="Venues.del(${v.id})">🗑</button>` : ''}` : ''}</div>`).join('')}
@@ -252,7 +252,7 @@ class SubCoach {
   static detail(e) {
     const L = DB.subPl;
     return `<button class="btn" onclick="SubCoach.close()">← Tréninky</button><h2>🙋 Zástup ${esc(e.tm)} · ${Util.date(e.d)} · ${esc(e.t)}</h2>
-      <div class="card ev ${e.k}"><div class="mut">📍 ${esc(e.pl)}${e.m ? ' · 🤝 Sraz: ' + esc(e.m) : ''}</div>${Weather.line(e)}${Venues.navLinks(e.pl)}</div>
+      <div class="card ev ${e.k}"><div class="mut">📍 ${esc(e.pl)}${e.m ? ' · 🤝 Sraz: ' + esc(e.m) : ''}</div>${Weather.line(e)}</div>
       ${DB.eplans[e.id] ? `<div class="card"><b>📋 Plán tréninku</b><div style="white-space:pre-wrap;margin-top:6px">${esc(DB.eplans[e.id])}</div></div>` : ''}
       ${L == null ? '<div class="card mut">Načítám hráče…</div>' : `<div class="g2">${L.map(p => `<div class="card"><b>${esc(p.full_name || p.short_name)}</b>
          <div class="mut">${p.response == 'y' ? '✔ potvrdil účast' : p.response == 'n' ? '✖ omluven' + (p.reason ? ' – ' + esc(p.reason) : '') : '⏳ bez odpovědi'}</div>
