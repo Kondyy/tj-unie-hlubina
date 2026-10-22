@@ -395,15 +395,16 @@ class OfflineQ {
     OfflineQ.set(L.concat(rows.map(r => Object.assign({uid: Sync.me}, r))));
   }
   /** Zapíše značky docházky; bez spojení je zařadí do fronty v telefonu. */
-  static async save(rows) {
-    if (!navigator.onLine) { OfflineQ.push(rows); return App.render(); }
+  static async save(rows, quiet) {                                   // quiet: překreslí jen když se změní počet čekajících značek
+    const n0 = OfflineQ.mine().length;
+    if (!navigator.onLine) { OfflineQ.push(rows); return quiet && OfflineQ.mine().length == n0 ? null : App.render(); }
     Sync.pending++;
     try { const r = await sb.from('attendance').upsert(rows, {onConflict: 'event_id,player_id'}); if (r.error) throw r.error; }
     catch (e) {
       if (OfflineQ.isNet(e)) OfflineQ.push(rows);
       else { Sync.toast('Docházku se nepodařilo uložit: ' + (e.message || e)); Sync.queueReload(['attendance']); }
     } finally { Sync.pending--; }
-    App.refresh();
+    if (!quiet || OfflineQ.mine().length != n0 || UI.toast) App.refresh();
   }
   static async flush() {
     const mine = OfflineQ.mine(); if (!mine.length || !navigator.onLine || !UI.user || OfflineQ.busy) return;

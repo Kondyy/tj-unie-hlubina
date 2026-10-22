@@ -510,8 +510,9 @@ class Sync {
     const r = p.new, m = Model.byId(r.player_id);
     if (!m) return Sync.queueReload(['players', 'attendance']);
     if (DB.cpool[r.event_id] !== undefined && (r.carpool || '') != (DB.carpool[m.n + '|' + r.event_id] || '')) delete DB.cpool[r.event_id];   // změna spolujízdy → seznam znovu načíst
+    const ke = r.event_id + '|' + m.n, kr = m.n + '|' + r.event_id, was = JSON.stringify([DB.att[ke], DB.responses[kr], DB.carpool[kr]]);
     Sync.applyAtt(r, m);
-    App.refresh();
+    if (JSON.stringify([DB.att[ke], DB.responses[kr], DB.carpool[kr]]) != was) App.refresh();   // vlastní změna, která se jen vrátila ze serveru, stránku znovu nepřekresluje
   }
 
   /** Odložené znovunačtení částí paměti (sloučí rychlé změny; počká, až doběhnou vlastní zápisy). */

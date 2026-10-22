@@ -6,6 +6,16 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 22. 10. 2026 (rychlejší docházka s fotkami)
+
+Docházka jako mřížka fotek se už nezasekává. Databáze se nemění.
+
+- Klepnutí na fotku přepne jen tu jednu dlaždici a počet přítomných. Dřív se po každém klepnutí celá stránka překreslila třikrát (klepnutí, uložení a odpověď serveru).
+- Už načtené fotky se při překreslení a návratu na stránku znovu nedekódují a telefon je dekóduje mimo hlavní vlákno.
+- Když se ze serveru vrátí jen vlastní změna docházky, stránka se znovu nepřekresluje.
+
+---
+
 ## 22. 10. 2026 (nový vzhled)
 
 Nový vzhled v barvách klubu (červená a modrá z loga). Všechny dosavadní funkce zůstaly, mění se jen podoba a přibylo pár pomůcek. Databáze se nemění.

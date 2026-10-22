@@ -391,9 +391,9 @@ class Attendance {
   // ----- akce -----
   static open(id)  { UI.attEvent = id; App.render(); }   // id události je číslo i text – srovnává se volně
   static close()   { UI.attEvent = 0; App.render(); }
-  static mark(eventId, name, state) {
-    DB.att[eventId + '|' + name] = state; App.render();
-    OfflineQ.save([{event_id: +eventId, player_id: Model.member(name).id, state}]);   // uloží se (bez internetu později) a trenérům přijde Realtime
+  static mark(eventId, name, state, quiet) {                         // quiet: stránku nepřekresluje (mřížka fotek si dlaždici upraví sama)
+    DB.att[eventId + '|' + name] = state; if (!quiet) App.render();
+    OfflineQ.save([{event_id: +eventId, player_id: Model.member(name).id, state}], quiet);   // uloží se (bez internetu později) a trenérům přijde Realtime
   }
   /** Hráčům bez značky dá najednou „Přítomen“ (omluvení a neomluvení zůstanou). */
   static allPresent(id) {
