@@ -52,9 +52,9 @@ class Absence {
 class Calendar {
   /** Záložka "Přehled": nadcházející události + odehrané zápasy kategorie dítěte. */
   static view() {
-    const team = Model.team(UI.kid);
-    return `<div class="col"><h2 style="margin-top:0">📅 Nadcházející · ${UI.kid} (${team})</h2>
-      ${Model.eventsOf(team).map(e => Calendar.eventCard(e)).join('')}${Calendar.history(team)}${Calendar.contacts(team)}</div>`;
+    const team = Model.team(UI.kid), today = Dnes.parent(team);                // nahoře nejbližší akce s odpočtem (js/vzhled.js)
+    return `<div class="col">${today}<h2 style="margin-top:${today ? '18px' : '0'}">📅 Nadcházející · ${UI.kid} (${team})</h2>
+      ${Model.eventsOf(team).map(e => Calendar.eventCard(e)).join('') || Look.empty('cal', 'Tento týden nic', `${esc(UI.kid)} tento týden nemá žádný trénink ani zápas. Jakmile ho trenér přidá, objeví se tady.`)}${Calendar.history(team)}${Calendar.contacts(team)}</div>`;
   }
 
   /** Kontakty na trenéry kategorie: jméno, po rozkliknutí telefon a e-mail. */
@@ -108,12 +108,12 @@ class Calendar {
     const w = L.filter(r => r.s[0] > r.s[1]).length, d = L.filter(r => r.s[0] == r.s[1]).length;
     const goals = L.reduce((a, r) => a + (r.g[UI.kid] || 0), 0);
     return `<h2>🏁 Odehrané zápasy</h2>
-      <div class="card"><div class="pay"><span>Bilance týmu ${team}</span><b>${w}V · ${d}R · ${L.length - w - d}P</b></div><div class="mut">Branky ${UI.kid}: ${goals}</div></div>
+      <div class="card"><div class="pay"><span>Bilance týmu ${team}</span><b>${w}V · ${d}R · ${L.length - w - d}P</b></div><div class="mut">Branky ${UI.kid}: ${goals}</div>${Charts.form(L)}</div>
       ${L.map(r => {
         const c = r.s[0] > r.s[1] ? ['ok','V'] : r.s[0] == r.s[1] ? ['wa','R'] : ['no','P'], k = r.g[UI.kid];
         return `<div class="card"><div class="pay"><div><b>${r.h ? CLUB + ' – ' + r.o : r.o + ' – ' + CLUB}</b>
           <div class="mut">${r.d} · ${r.h ? 'doma' : 'venku'}${k ? ` · ⚽ ${UI.kid} ${k}×` : ''}</div></div>
-          <span class="pill ${c[0]}">${r.h ? r.s[0] + ':' + r.s[1] : r.s[1] + ':' + r.s[0]} ${c[1]}</span></div></div>`;
+          <span class="pill ${c[0]}">${r.h ? r.s[0] + ':' + r.s[1] : r.s[1] + ':' + r.s[0]} ${c[1]}</span></div>${ResultImg.btn(r, true)}</div>`;
       }).join('')}`;
   }
 
@@ -217,7 +217,8 @@ class Payments {
     const L = Payments.filtered(), debtors = L.filter(m => Model.debt(m) > 0).length;
     return `<div class="card"><div class="pay"><span>Vybráno</span><b>${got} / ${total} Kč</b></div>
         <div class="bar"><i style="width:${Math.round(got / total * 100)}%"></i></div>
-        <div class="mut">Nedoplatky: ${total - got} Kč · ${DB.members.filter(m => Model.debt(m) > 0).length} z ${DB.members.length} členů má dluh</div></div>
+        <div class="mut">Nedoplatky: ${total - got} Kč · ${DB.members.filter(m => Model.debt(m) > 0).length} z ${DB.members.length} členů má dluh</div>
+        ${Charts.donut(DB.payItems.map((x, i) => ({l: x.n, v: DB.members.filter(m => !m.p[i]).length * x.a})).filter(x => x.v), ' Kč')}</div>
       <div class="card"><b>Import z Excelu</b>
         <div class="mut">Sloupce: „Jméno“, volitelně „Tým“, další = příspěvky (např. „Dresy (600)“). Zaplaceno = ano / 1 / x / ✔.</div>
         <input type="file" accept=".xlsx,.xls,.csv" onchange="Payments.importExcel(this)">
@@ -325,13 +326,13 @@ class Attendance {
     if (se) return SubCoach.detail(se);                               // zástup za trenéra jiné kategorie
     if (!e) {                                                         // 1) seznam tréninků
       UI.attEvent = 0;
-      return `${Attendance.mine()}${OfflineQ.badge()}${SubCoach.list()}<h2>Tréninky ${team}</h2><div class="g2">${trainings.map(t => {
+      return `${Dnes.coach(team)}${Attendance.mine()}${OfflineQ.badge()}${SubCoach.list()}<h2>Tréninky ${team}</h2><div class="g2">${trainings.map(t => {
         const k = Attendance.marked(t);
         return `<div class="card ev ${t.x ? 'x' : 't'}" ${t.x ? '' : `style="cursor:pointer" onclick="Attendance.open('${t.id}')"`}>
           <div class="pay"><b>⚽ ${Util.date(t.d)} · ${t.t}</b><span class="pill ${t.x ? 'x' : k == count ? 'ok' : 'wa'}">${t.x ? 'Zrušeno' : k + '/' + count + ' označeno'}</span></div>
           <div class="mut">📍 ${esc(t.pl)}${t.sc ? ' · 🙋 zástup: ' + esc(t.c) : ''}</div>${Weather.line(t)}${t.x ? '' : '<div class="mut">Klepnutím otevřete docházku →</div>'}
           <div class="row" style="margin-top:8px"><button class="btn" onclick="event.stopPropagation();Events.cancel('${t.id}')">${t.x ? 'Obnovit trénink' : 'Zrušit trénink'}</button><button class="btn" style="flex:none;color:var(--r)" onclick="event.stopPropagation();Events.remove('${t.id}')">🗑 Smazat</button></div></div>`;
-      }).join('') || '<div class="card mut">Tento týden zatím žádný trénink. Tréninky se přidají automaticky podle rozvrhu hřišť, který nastavuje vedení.</div>'}</div>
+      }).join('') || Look.empty('ball', 'Zatím žádné tréninky', 'Tento týden zatím žádný trénink. Tréninky se přidají automaticky podle rozvrhu hřišť, který nastavuje vedení, nebo je přidejte ručně níže.')}</div>
       <h2>+ Přidat trénink ručně</h2><div class="card">
         <div class="row"><select id="tr-day">${CONFIG.days.map((n, i) => `<option value="${i}">${Util.date(i)}</option>`).join('')}</select>
           <input id="tr-time" placeholder="Čas (16:00)"></div>
@@ -343,6 +344,7 @@ class Attendance {
       <h2>${Util.date(e.d)} · ${e.t} · ${esc(e.pl)}</h2>${Weather.line(e)}${Attendance.coachCard(e)}
       <div class="row" style="margin-top:10px">${Events.notifyBtn(e)}</div>${Venues.placeBox(e)}${OfflineQ.badge()}${Attendance.answers(e)}
       <button class="btn ok" style="width:100%;margin-top:10px" onclick="Attendance.allPresent(${e.id})">✔ Všichni ostatní přítomni</button>
+      ${!AttGrid.isList() ? AttGrid.view(e) : `<button class="btn" style="width:100%;margin-top:10px" onclick="AttGrid.setList(false)">📷 Mřížka fotek (rychlé klepání)</button>
       <div class="g2" style="margin-top:10px">${Model.membersOf(team).map(m => {
         const a = DB.att[e.id + '|' + m.n], p = Model.attPct(m), [ps, tt] = Model.attCount(m);
         return `<div class="card"><div style="display:flex;gap:10px;align-items:center">${Util.avatar(m, 40)}
@@ -350,7 +352,7 @@ class Attendance {
           <div style="margin-top:6px"><span class="pill ${Events.answer(m.n, e.id)[0]}" style="white-space:normal">${Events.answer(m.n, e.id)[1]}</span></div>
           <div class="bar" style="margin:8px 0"><i style="width:${p}%;background:${Util.attBg(p)}"></i></div>
           <div class="row">${CONFIG.attStates.map(([c, l, k]) => `<button class="btn ${a == c ? k : ''}" onclick="Attendance.mark('${e.id}','${Util.q(m.n)}','${c}')">${l}</button>`).join('')}</div></div>`;
-      }).join('')}</div>
+      }).join('')}</div>`}
       ${TPlan.card(e)}${Bring.coach(e)}${SubCoach.card(e)}`;
   }
 
@@ -426,7 +428,7 @@ class Events {
           <div class="pay"><b>${m.tour ? '🏅 Turnaj: ' : '🏆 vs. '}${esc(m.o)}</b><span class="pill ${m.x ? 'x' : 'z'}">${m.x ? 'Zrušeno' : Util.date(m.d)}</span></div>
           <div class="mut">${esc(m.t)} · 📍 ${esc(m.pl)}</div>
           <div class="mut">${m.tour ? (Tour.games(m).length ? '🏁 ' + Tour.games(m).length + ' utkání' + (m.rank ? ' · ' + esc(m.rank) + '. místo' : '') : 'Klepnutím otevřete turnaj →') : res ? '🏁 ' + res.s[0] + ':' + res.s[1] : noms ? (m.nc ? '🔒 Nominace uzavřena' : 'Nominace rozpracována') + ' · ' + noms + ' hráčů · ' + Events.confirmSummary(m) : 'Klepnutím otevřete zápas →'}</div></div>`;
-      }).join('') || '<div class="card mut">Tento týden zatím žádný zápas.</div>'}</div>${Events.form()}`;
+      }).join('') || Look.empty('trophy', 'Zatím žádné zápasy', 'Tento týden zatím žádný zápas. Přidejte ho formulářem níže.')}</div>${Events.form()}`;
     }
     return `<button class="btn" onclick="Events.closeMatch()">← Zápasy</button>
       <h2>${e.tour ? '🏅 Turnaj: ' : '🏆 vs. '}${esc(e.o)} · ${Util.date(e.d)} · ${esc(e.t)}</h2>
@@ -439,7 +441,7 @@ class Events {
           <button class="btn" onclick="Events.cancel(${e.id})">${e.x ? 'Obnovit' : 'Zrušit'}</button><button class="btn" style="flex:none;color:var(--r)" onclick="Events.remove(${e.id})">🗑 Smazat</button></div>
         ${e.x ? '' : Attendance.coachCard(e, true)}${UI.nomEvent == e.id ? Events.nominationBox(e) : ''}${UI.resEvent == e.id ? Events.resultBox(e) : ''}
         ${e.x ? '' : Carpool.list(e)}</div>
-      ${e.x || !e.tour ? '' : Tour.box(e)}
+      ${e.x || !e.tour ? '' : Tour.box(e)}${ResultImg.forEvent(e)}
       ${e.x ? '' : Events.confirmBox(e) + Bring.coach(e) + SubCoach.card(e)}`;
   }
   static openMatch(id) { UI.matchEvent = id; UI.nomEvent = 0; UI.resEvent = 0; App.render(); }
@@ -1038,7 +1040,7 @@ class Chat {
     const ct = team.startsWith('T-');                                  // interní chat trenérů kategorie
     return `<div class="card"><div class="pay"><b>${ct ? '🔒 Chat trenérů ' + team.slice(2) : '💬 Chat ' + team}</b><span class="mut">${ct ? 'jen trenéři kategorie ' + team.slice(2) : 'trenéři a rodiče kategorie ' + team}</span></div>
       <div class="chat" id="chat-box" style="margin-top:10px">${Model.chat(team).map(m => `<div class="bub ${m.fid == u.id ? 'me' : ''}">
-        <div class="nm"><b>${esc(m.f)}</b>${m.role == 'Trenér' ? '<span class="pill ok">Trenér</span>' : ''}</div>${esc(m.x)}<div class="tm">${esc(m.t)}</div></div>`).join('') || '<div class="mut">Zatím žádné zprávy.</div>'}</div>
+        <div class="nm"><b>${esc(m.f)}</b>${m.role == 'Trenér' ? '<span class="pill ok">Trenér</span>' : ''}</div>${esc(m.x)}<div class="tm">${esc(m.t)}</div></div>`).join('') || `<div class="empty" style="padding:14px"><div class="eic">${Icons.svg('chat')}</div><b>Zatím žádné zprávy</b><div class="mut">Napište první zprávu – uvidí ji ${ct ? 'trenéři' : 'trenéři a rodiče'} kategorie.</div></div>`}</div>
       <div class="cin"><input id="chat-input" autocomplete="off" placeholder="Napište zprávu…" onkeydown="if(event.key==='Enter')Chat.send()"><button class="btn ok" onclick="Chat.send()">Odeslat</button></div>${Tpl.chips()}</div>`;
   }
 
@@ -1049,7 +1051,7 @@ class Chat {
     DB.notifs.forEach(n => { if (n.sub == 'club' && Notifs.forUser(n, u)) Notifs.markRead(n, u); });
     return L.slice().reverse().map(m => `<div class="card"><div class="pay"><b>${esc(m.s || 'Zpráva od klubu')}</b>
       <span class="pill ${CONFIG.msgBadges[m.kind][1]}">${CONFIG.msgBadges[m.kind][0]}</span></div>
-      <div style="margin:6px 0">${esc(m.x)}</div><div class="mut">${esc(m.f)} · ${esc(m.role)} · ${esc(m.t)}</div></div>`).join('') || '<div class="card mut">Žádné zprávy od klubu.</div>';
+      <div style="margin:6px 0">${esc(m.x)}</div><div class="mut">${esc(m.f)} · ${esc(m.role)} · ${esc(m.t)}</div></div>`).join('') || Look.empty('mega', 'Žádné zprávy od klubu', 'Až vedení klubu pošle oznámení, najdete ho tady.');
   }
 
   // ----- akce -----
@@ -1572,7 +1574,7 @@ class AttOverview {
   static view() {
     const L = AttOverview.rows(), low = L.filter(r => r.p < CONFIG.attMid).length, avg = L.length ? Math.round(L.reduce((a, r) => a + r.p, 0) / L.length) : 0;
     return `<div class="col"><div class="card"><div class="pay"><b>📊 Docházka</b><span class="pill z">${L.length} hráčů</span></div>
-        <div class="mut">Průměrná účast ${avg} % · pod ${CONFIG.attMid} %: ${low} hráčů</div>
+        <div class="mut">Průměrná účast ${avg} % · pod ${CONFIG.attMid} %: ${low} hráčů</div>${UI.ovTeam == 'all' ? AttOverview.chart() : ''}
         <button class="btn" style="width:100%;margin-top:8px" onclick="AttOverview.export()">⬇ Export do Excelu</button></div>
       <input id="ov-search" type="search" placeholder="🔍 Hledat hráče…" value="${esc(UI.ovSearch)}" oninput="AttOverview.search(this.value)">
       <div class="row" style="margin:6px 0">${['all', ...CONFIG.planner.teams].map(t => `<button class="chip ${UI.ovTeam == t ? 'on' : ''}" onclick="AttOverview.team('${Util.q(t)}')">${t == 'all' ? 'Všechny kategorie' : esc(t)}</button>`).join('')}</div>
@@ -1581,6 +1583,11 @@ class AttOverview {
             <div class="bar" style="margin-top:4px"><i style="width:${r.p}%;background:${Util.attBg(r.p)}"></i></div></div>
           <div style="text-align:right"><b class="${Util.attCls(r.p)}">${r.p} %</b><div class="mut">${r.ps}/${r.tt}</div></div></div></div>`).join('') || '<div class="card mut">Nikdo nenalezen.</div>'}
       ${AttOverview.coaches()}</div>`;
+  }
+  /** Graf: průměrná docházka po kategoriích. */
+  static chart() {
+    const L = CONFIG.planner.teams.map(t => { const R = DB.members.filter(m => m.t == t); return R.length ? {t, a: Math.round(R.reduce((s, m) => s + Model.attPct(m), 0) / R.length)} : null; }).filter(Boolean);
+    return L.length > 1 ? Charts.bars(L.map(x => ({l: x.t, v: x.a, top: x.a + ' %', c: {g: '', y: 'y', r: 'r'}[Util.attLvl(x.a)]}))) : '';
   }
   /** Docházka trenérů (podle potvrzení „přijdu“ / „nemohu“ a importu). */
   static coaches() {
@@ -2056,6 +2063,7 @@ class Settings {
           <div class="mut" style="margin-top:6px">Týká se upozornění do telefonu. Zvonek v aplikaci zobrazuje vše.</div></div>
         ${Settings.quiet()}
         ${UI.setMsg ? `<div class="${UI.setOk ? 'cg' : 'warn'}" style="margin-top:8px">${esc(UI.setMsg)}</div>` : ''}</div>
+      ${Theme.card()}
       ${Settings.chatRetention()}
       ${Settings.calendar()}
       ${u.r == 'v' ? '' : Tpl.card()}

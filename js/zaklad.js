@@ -29,6 +29,7 @@
           Planner    plánovač hřišť                    (vedení)
           Users      správa uživatelů a dětí           (vedení)
      9. App          vykreslení stránky a záložky podle role
+    10. VZHLED       (js/vzhled.js) světlý/tmavý režim, ikony, obrazovka Dnes, mřížka docházky, grafy, obrázek výsledku
 
    JAK TO FUNGUJE
      • Každá třída má statické metody:  view() vrací HTML, ostatní jsou akce.

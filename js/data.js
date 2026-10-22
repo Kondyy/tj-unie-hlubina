@@ -145,7 +145,7 @@ class Notifs {
 class Auth {
   /** HTML přihlašovací obrazovky. */
   static view() {
-    if (UI.boot) return `<div class="wrap" style="max-width:440px;padding-top:12vh"><div class="hero"><img class="lg" src="${LOGO}" alt="${CLUB}"><div><b style="font-size:20px">${CLUB}</b><div class="mut">Načítám…</div></div></div></div>`;
+    if (UI.boot) return Look.splash();                                     // úvodní obrazovka s logem (js/vzhled.js)
     return `<div class="wrap" style="max-width:440px;padding-top:8vh">
       <div class="hero"><img class="lg" src="${LOGO}" alt="${CLUB}"><div><b style="font-size:20px">${CLUB}</b><div class="mut">Klubový systém · pilotní provoz U9</div></div></div>
       <form class="card" onsubmit="Auth.login();return false">
@@ -157,7 +157,7 @@ class Auth {
         ${Captcha.html()}
         ${UI.authMsg ? `<div class="warn">${esc(UI.authMsg)}</div>` : ''}
         <button class="btn ok" id="lg-btn" type="submit" style="width:100%;margin-top:10px">Přihlásit se</button>
-        <div class="mut" style="margin-top:10px">Přihlašovací údaje vám vytvořil správce klubu. <a href="#" onclick="Auth.forgot();return false" style="color:var(--ac,#6ee7b7)">Zapomněli jste heslo?</a></div>
+        <div class="mut" style="margin-top:10px">Přihlašovací údaje vám vytvořil správce klubu. <a href="#" onclick="Auth.forgot();return false" style="color:var(--acc)">Zapomněli jste heslo?</a></div>
         ${UI.authInfo ? `<div class="cg" style="margin-top:6px">${esc(UI.authInfo)}</div>` : ''}
       </form></div>`;
   }
@@ -550,6 +550,7 @@ class Sync {
 
   static toast(msg, ok) {
     UI.toast = msg; UI.toastOk = !!ok; App.refresh();
+    if (ok && /^✔/.test(msg)) Look.done();                            // uloženo → velká fajfka a zavibrování
     clearTimeout(Sync.toastTimer);
     Sync.toastTimer = setTimeout(() => { UI.toast = ''; App.refresh(); }, 5500);
   }

@@ -5,8 +5,8 @@ Webová aplikace (`index.html` + `css/` + `js/`) napojená na Supabase. Role: **
 | Soubor | K čemu |
 |---|---|
 | `index.html` | stránka aplikace (načte styly a skripty níže) |
-| `css/app.css` | vzhled |
-| `js/zaklad.js` → `js/data.js` → `js/moduly.js` → `js/doplnky.js` → `js/app.js` | kód aplikace (načítá se v tomto pořadí; po úpravě zvyšte `?v=…` v `index.html`) |
+| `css/app.css` | vzhled (barvy klubu, světlý a tmavý režim) |
+| `js/zaklad.js` → `js/data.js` → `js/moduly.js` → `js/doplnky.js` → `js/vzhled.js` → `js/app.js` | kód aplikace (načítá se v tomto pořadí; po úpravě zvyšte `?v=…` v `index.html`) |
 | `.github/workflows/keepalive.yml` | každé 3 dny „probudí“ Supabase, aby se bezplatný projekt neuspal |
 | `.github/workflows/backup.yml` | každý týden šifrovaná záloha databáze (viz Zálohy) |
 | `schema.sql` | databáze + pravidla přístupu (RLS); **lze spouštět opakovaně** |
