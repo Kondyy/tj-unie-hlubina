@@ -217,9 +217,9 @@ class Auth {
     Sync.stop();
     Object.assign(DB, {users:{}, members:[], docs:{}, events:[], results:[], payItems:[], plan:[], messages:[], chats:{}, notifs:[], links:[], settings:{}, dm:[], dmContacts:[], tcoaches:[], aper:[], calTok:undefined,
                        att:{}, coachAtt:{}, coachNm:{}, coachEv:{}, pastT:[], nominations:{}, carpool:{}, responses:{}, notes:{}, seen:{},
-                       venues:[], ecom:{}, eplans:{}, ttpl:[], tpls:[], cpool:{}, cpPeers:{}, subPl:null});
+                       venues:[], eplans:{}, ttpl:[], tpls:[], cpool:{}, cpPeers:{}, subPl:null});
     UI.user = null; UI.asTeam = ''; UI.imp = null; UI.recovery = false; UI.more = false; UI.bell = false; UI.modal = null; UI.profile = false; UI.profMsg = ''; UI.pkSel = {}; UI.player = ''; UI.boot = false; UI.kid = ''; UI.editUser = ''; UI.dmWith = ''; UI.dmSearch = ''; UI.ai = null; UI.calTok = undefined; UI.calMsg = '';
-    UI.offlineAt = 0; UI.usage = undefined; UI.errs = undefined; UI.subEvent = 0; UI.ecOpen = 0; UI.kidEdit = false;
+    UI.offlineAt = 0; UI.usage = undefined; UI.errs = undefined; UI.subEvent = 0; UI.kidEdit = false;
     UI.skipKeep = ['lg-pass', 'lg-email'];
     App.render();
   }
@@ -359,13 +359,6 @@ class Sync {
                                 br: e.bring || '', tour: e.tour ? 1 : 0, rank: e.placement || '', sc: e.sub_coach || null}));
       DB.cpool = {};                                                  // spolujízda se dočte znovu u zobrazených zápasů
     },
-    /** Diskuse u akcí zobrazovaného týdne */
-    ecom: async () => {
-      const a = Util.iso(Util.dayDate(0)), b = Util.iso(Util.dayDate(6));
-      const { data, error } = await sb.from('event_comments').select('*, events!inner(event_date)').gte('events.event_date', a).lte('events.event_date', b).order('id');
-      DB.ecom = {}; if (error || !data) return;
-      data.forEach(r => (DB.ecom[r.event_id] = DB.ecom[r.event_id] || []).push(Comments.row(r)));
-    },
     /** Plány tréninků zobrazovaného týdne a šablony plánů (jen trenéři; ostatním databáze nic nevrátí) */
     eplans: async () => {
       DB.eplans = {}; DB.ttpl = [];
@@ -490,7 +483,7 @@ class Sync {
   /** Která tabulka při změně znovu načte které části paměti. */
   static watch = {
     teams: ['teams'], settings: ['settings'], events: ['events', 'coach'], results: ['results'], plan: ['plan'], nominations: ['noms'], club_messages: ['club'], notifications: ['notifs'],
-    coach_attendance: ['coach'], direct_messages: ['dm'], event_comments: ['ecom'], venues: ['venues'], event_plans: ['eplans'], notes: ['notes'], player_absence: ['pabs'], user_prefs: ['prefs'], absence_periods: ['aper'], players: ['players', 'people'], player_payments: ['players'], parent_players: ['people'], profiles: ['people', 'tcoaches']
+    coach_attendance: ['coach'], direct_messages: ['dm'], venues: ['venues'], event_plans: ['eplans'], notes: ['notes'], player_absence: ['pabs'], user_prefs: ['prefs'], absence_periods: ['aper'], players: ['players', 'people'], player_payments: ['players'], parent_players: ['people'], profiles: ['people', 'tcoaches']
   };
 
   static subscribe() {

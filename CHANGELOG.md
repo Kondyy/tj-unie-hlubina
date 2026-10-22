@@ -6,6 +6,14 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 22. 10. 2026 (úprava)
+
+- Odstraněna **diskuse k akci** a tlačítko **📤 Sdílet**.
+- **🧭 Navigovat** je jen u zápasů a turnajů, u tréninků už není.
+- Databáze se nemění (stará tabulka diskusí zůstává, aplikace ji jen nepoužívá).
+
+---
+
 ## 22. 10. 2026
 
 ### Rodiče
