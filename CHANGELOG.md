@@ -6,6 +6,40 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 22. 10. 2026
+
+### Rodiče
+- **Kontakty a zdraví dítěte** upraví rodič sám v záložce **Hráč** (✏️ Upravit). Trenéři kategorie dostanou upozornění.
+- **Spolujízda:** u zápasu je vidět, kdo nabízí místa a kdo hledá odvoz, a rodiči jde rovnou napsat soukromou zprávu.
+- **📈 Vývoj** v profilu dítěte: docházka po měsících, zápasy, góly a poznámky, které trenér zpřístupnil.
+- U akce: **🧭 Navigovat** (Google Mapy / Mapy.com), **počasí** na domácích hřištích (0–3 dny dopředu), **🎒 co s sebou** s odškrtáváním, **📤 Sdílet** do WhatsAppu a **💬 diskuse k akci**.
+
+### Trenéři
+- **Docházka bez internetu:** značky se uloží v telefonu a odešlou se samy, až bude signál. Tlačítko **✔ Všichni ostatní přítomni**.
+- **📋 Plán tréninku** u každého tréninku + šablony plánů kategorie.
+- **🏅 Turnaje:** zápas lze označit jako turnaj, zapsat víc utkání, souhrn, střelce a konečné umístění.
+- **📋 Souhrn hodinu před tréninkem** (přijde do zvonku/telefonu): kolik přijde, kdo je omluven a proč, kdo neodpověděl.
+- **🙋 Zástup:** trenér vybere kolegu, ten dostane upozornění, uvidí akci a plán a zapíše docházku (sekce „Zastupuji“ v Trénincích).
+- **🧾 Měsíční výkaz** (Nastavení): tréninky, zápasy, hodiny, export do Excelu; vedení vidí všechny trenéry.
+- **Deník:** hledání, filtr štítků, poznámka „👪 vidí rodič“, **⏰ připomínka** (ráno přijde upozornění) a splnění.
+- **⚡ Rychlé zprávy** pod polem chatu a soukromých zpráv (upravují se v Nastavení).
+- Nová místa (hřiště soupeřů) jdou přidat přímo ve formuláři zápasu („➕ Nové místo…“).
+
+### Všichni
+- **🌙 Noční klid** (Nastavení, výchozí zapnuto 22:00–7:00): upozornění do telefonu v noci nepípnou, ráno přijde jeden souhrn. Zvonek v aplikaci funguje pořád.
+- **Offline režim:** bez internetu se aplikace otevře s posledními uloženými daty (jen při „Zůstat přihlášený“, po odhlášení se smažou).
+- **Zástupci ikony** aplikace v telefonu (dlouhé podržení ikony): Tréninky, Přehled, Chat.
+
+### Vedení / Správa
+- **📍 Místa a adresy** pro navigaci, **📈 využití bezplatného tarifu**, **🐞 chyby v aplikaci** (zapisují se samy), **🛡 ochrana přihlášení** (viz README).
+- **Automatická týdenní záloha** databáze a **udržení projektu v chodu** přes GitHub Actions (záloha potřebuje jednou nastavit 2 tajné údaje – viz README, sekce Zálohy).
+
+### Technické
+- Aplikace je rozdělená na `index.html`, `css/app.css` a `js/*.js` (snazší úpravy, telefony si stahují jen změněné soubory).
+- Databáze: pravidla přístupu rychlejší (přihlášený uživatel se zjišťuje jednou za dotaz, čtení a zápis mají oddělená pravidla), indexy pro cizí klíče.
+
+**Supabase:** nové tabulky, funkce a pravidelné úlohy jsou nasazené. Poslední krok (nahrazení starých pravidel zápisu a noční souhrn upozornění) se dokončí spuštěním celého `schema.sql`.
+
 ---
 
 ## 21. 10. 2026 (večer 4)
