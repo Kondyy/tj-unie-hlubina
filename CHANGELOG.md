@@ -9,7 +9,8 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 ## 22. 10. 2026 (úprava)
 
 - Odstraněna **diskuse k akci** a tlačítko **📤 Sdílet**.
-- **🧭 Navigovat** je jen u zápasů a turnajů, u tréninků už není.
+- **📍 Místo akce:** trenér v detailu tréninku i zápasu vybere místo a uloží ho; podle něj funguje **🧭 Navigovat** (u tréninků i zápasů).
+- **📍 Místa pro navigaci** v Nastavení: trenér upraví adresu míst nebo přidá nové (mazat může jen vedení).
 - Databáze se nemění (stará tabulka diskusí zůstává, aplikace ji jen nepoužívá).
 
 ---

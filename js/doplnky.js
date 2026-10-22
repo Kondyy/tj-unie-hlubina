@@ -21,8 +21,20 @@ class Venues {
       <a class="btn" target="_blank" rel="noopener" href="https://mapy.com/fnc/v1/search?query=${t}">🗺 Mapy.com</a></div>`;
   }
   /** Výběr místa ve formuláři; poslední volba „Nové místo…“ založí místo s adresou. */
-  static select(id) {
-    return `<select id="${id}" onchange="if(this.value=='__new')Venues.add(this)">${Venues.names().map(v => `<option>${esc(v)}</option>`).join('')}<option value="__new">➕ Nové místo…</option></select>`;
+  static select(id, cur) {
+    const L = Venues.names(); if (cur && !L.includes(cur)) L.unshift(cur);
+    return `<select id="${id}" onchange="if(this.value=='__new')Venues.add(this)">${L.map(v => `<option ${v == cur ? 'selected' : ''}>${esc(v)}</option>`).join('')}<option value="__new">➕ Nové místo…</option></select>`;
+  }
+  /** Trenér: změna místa u konkrétního tréninku / zápasu + navigace na něj. */
+  static placeBox(e) {
+    if (e.x) return '';
+    return `<div class="row" style="margin-top:8px;align-items:center"><span style="flex:none">📍 Místo</span>${Venues.select('pl-' + e.id, e.pl)}
+      <button class="btn" style="flex:none" onclick="event.stopPropagation();Venues.setPlace(${e.id})">Uložit</button></div>${Venues.navLinks(e.pl)}`;
+  }
+  static async setPlace(id) {
+    const e = Model.event(id), s = $('#pl-' + id), place = s && s.value;
+    if (!e || !place || place == '__new' || place == e.pl) return;
+    if (await Sync.write('Místo se nepodařilo změnit', sb.from('events').update({place}).eq('id', id))) { e.pl = place; Sync.toast('✔ Místo uloženo.', true); App.render(); }
   }
   static async add(sel) {
     const name = (prompt('Název místa (např. Hřiště Vítkovice):') || '').trim().slice(0, 80);
@@ -33,26 +45,29 @@ class Venues {
     UI.skipKeep = [sel.id]; App.render();
     const s = $('#' + sel.id); if (s) s.value = r ? name : Venues.names()[0];
   }
-  /** Správa: adresy míst. */
+  static msg(t, ok) { UI.vnMsg = t; UI.vnOk = !!ok; App.render(); }
+  /** Správa a Nastavení trenéra: adresy míst pro navigaci (mazat může jen vedení). */
   static adminCard() {
-    return `<div class="card"><b>📍 Místa a adresy</b><div class="mut">Adresa se použije pro tlačítko „Navigovat“ u zápasů. Trenéři můžou přidat nové místo přímo při zakládání zápasu.</div>
+    const del = Model.mgmt(UI.user);
+    return `<div class="card"><b>📍 Místa pro navigaci</b><div class="mut">Adresa se použije pro tlačítko „Navigovat“ u tréninků a zápasů. Místo konkrétní akce změníte v jejím detailu.</div>
       ${Venues.list().map(v => `<div class="row" style="margin-top:6px;align-items:center"><b style="flex:0 0 34%">${esc(v.name)}</b>
         <input id="vn-${v.id}" value="${esc(v.address)}" placeholder="Adresa" autocomplete="off">
-        ${v.id ? `<button class="btn" style="flex:none" onclick="Venues.save(${v.id})">Uložit</button><button class="chip" style="flex:none;color:var(--r)" onclick="Venues.del(${v.id})">🗑</button>` : ''}</div>`).join('')}
-      <div class="row" style="margin-top:10px"><input id="vn-new-n" placeholder="Nové místo" autocomplete="off"><input id="vn-new-a" placeholder="Adresa" autocomplete="off"><button class="btn" style="flex:none" onclick="Venues.create()">+ Přidat</button></div></div>`;
+        ${v.id ? `<button class="btn" style="flex:none" onclick="Venues.save(${v.id})">Uložit</button>${del ? `<button class="chip" style="flex:none;color:var(--r)" onclick="Venues.del(${v.id})">🗑</button>` : ''}` : ''}</div>`).join('')}
+      <div class="row" style="margin-top:10px"><input id="vn-new-n" placeholder="Nové místo" autocomplete="off"><input id="vn-new-a" placeholder="Adresa" autocomplete="off"><button class="btn" style="flex:none" onclick="Venues.create()">+ Přidat</button></div>
+      ${UI.vnMsg ? `<div class="${UI.vnOk ? 'cg' : 'warn'}" style="margin-top:8px">${esc(UI.vnMsg)}</div>` : ''}</div>`;
   }
   static async save(id) {
     const address = ($('#vn-' + id).value || '').trim().slice(0, 200);
-    if (await Sync.write('Adresu se nepodařilo uložit', sb.from('venues').update({address}).eq('id', id))) { await Sync.loaders.venues(); Admin.msg('✔ Adresa uložena.', true); }
+    if (await Sync.write('Adresu se nepodařilo uložit', sb.from('venues').update({address}).eq('id', id))) { await Sync.loaders.venues(); Venues.msg('✔ Adresa uložena.', true); }
   }
   static async create() {
     const name = ($('#vn-new-n').value || '').trim().slice(0, 80), address = ($('#vn-new-a').value || '').trim().slice(0, 200);
-    if (!name) return Admin.msg('⚠ Zadejte název místa.');
-    if (await Sync.write('Místo se nepodařilo přidat', sb.from('venues').insert({name, address}))) { await Sync.loaders.venues(); UI.skipKeep = ['vn-new-n', 'vn-new-a']; Admin.msg('✔ Místo přidáno.', true); }
+    if (!name) return Venues.msg('⚠ Zadejte název místa.');
+    if (await Sync.write('Místo se nepodařilo přidat', sb.from('venues').insert({name, address}))) { await Sync.loaders.venues(); UI.skipKeep = ['vn-new-n', 'vn-new-a']; Venues.msg('✔ Místo přidáno.', true); }
   }
   static async del(id) {
     if (!confirm('Smazat místo? Už založené akce si název ponechají.')) return;
-    if (await Sync.write('Místo se nepodařilo smazat', sb.from('venues').delete().eq('id', id))) { await Sync.loaders.venues(); Admin.msg('✔ Místo smazáno.', true); }
+    if (await Sync.write('Místo se nepodařilo smazat', sb.from('venues').delete().eq('id', id))) { await Sync.loaders.venues(); Venues.msg('✔ Místo smazáno.', true); }
   }
 }
 
@@ -238,7 +253,7 @@ class SubCoach {
   static detail(e) {
     const L = DB.subPl;
     return `<button class="btn" onclick="SubCoach.close()">← Tréninky</button><h2>🙋 Zástup ${esc(e.tm)} · ${Util.date(e.d)} · ${esc(e.t)}</h2>
-      <div class="card ev ${e.k}"><div class="mut">📍 ${esc(e.pl)}${e.m ? ' · 🤝 Sraz: ' + esc(e.m) : ''}</div>${Weather.line(e)}</div>
+      <div class="card ev ${e.k}"><div class="mut">📍 ${esc(e.pl)}${e.m ? ' · 🤝 Sraz: ' + esc(e.m) : ''}</div>${Weather.line(e)}${Venues.navLinks(e.pl)}</div>
       ${DB.eplans[e.id] ? `<div class="card"><b>📋 Plán tréninku</b><div style="white-space:pre-wrap;margin-top:6px">${esc(DB.eplans[e.id])}</div></div>` : ''}
       ${L == null ? '<div class="card mut">Načítám hráče…</div>' : `<div class="g2">${L.map(p => `<div class="card"><b>${esc(p.full_name || p.short_name)}</b>
          <div class="mut">${p.response == 'y' ? '✔ potvrdil účast' : p.response == 'n' ? '✖ omluven' + (p.reason ? ' – ' + esc(p.reason) : '') : '⏳ bez odpovědi'}</div>
