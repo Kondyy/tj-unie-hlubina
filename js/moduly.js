@@ -862,7 +862,8 @@ class Roster {
           <input type="tel" value="${esc(q.ph)}" placeholder="Telefon" oninput="Roster.setParent('${id}',${j},'ph',this.value)">
           <input type="email" value="${esc(q.em)}" placeholder="E-mail" oninput="Roster.setParent('${id}',${j},'em',this.value)">
           <div class="row" style="margin-top:6px"><a class="btn" id="tl${j}" href="tel:${esc(Util.phone(q.ph))}">📞 Zavolat</a>
-            <a class="btn" id="sm${j}" href="sms:${esc(Util.phone(q.ph))}">💬 SMS</a><a class="btn" id="ml${j}" href="mailto:${esc(q.em)}">✉ E-mail</a></div>${UI.user.r == 'c' ? Roster.account(id, j, q) : ''}</div>`).join('')}
+            <a class="btn" id="sm${j}" href="sms:${esc(Util.phone(q.ph))}">💬 SMS</a><a class="btn" id="ml${j}" href="mailto:${esc(q.em)}">✉ E-mail</a>
+            <button class="btn" style="flex:none" title="Smazat tento kontakt" onclick="Roster.removeParent('${id}',${j})">🗑</button></div>${UI.user.r == 'c' ? Roster.account(id, j, q) : ''}</div>`).join('')}
         <button class="chip" style="margin-top:10px" onclick="Roster.addParent('${id}')">+ Další rodič</button></div>
 
       <!-- d) ZDRAVÍ A POZNÁMKY -->
@@ -946,6 +947,18 @@ class Roster {
   static setNum(id, key, val) { Model.byId(id)[key] = val === '' ? '' : +val; Sync.savePlayer(id); }    // číselné pole
   static setDoc(id, val)      { DB.docs[Model.byId(id).n] = val; App.render(); Sync.savePlayer(id, true); }   // stav zdravotní prohlídky
   static addParent(id)   { Model.byId(id).par.push({n:'', ph:'', em:''}); App.render(); Sync.savePlayer(id, true); }
+  /** Smaže jeden kontakt na rodiče. Má-li rodič účet propojený s dítětem, nabídne i odpojení (účet samotný zůstane). */
+  static async removeParent(id, j) {
+    const m = Model.byId(id), q = m.par[j], em = (q.em || '').trim().toLowerCase();
+    if (!confirm(`Smazat kontakt ${q.n || q.em || q.ph || 'na rodiče'}?`)) return;
+    const acc = em && Object.values(DB.users).find(x => x.r == 'p' && x.email.toLowerCase() == em);
+    const linked = acc && DB.links.some(l => l.parent_id == acc.id && l.player_id == id);
+    m.par.splice(j, 1); UI.accFor = ''; App.render(); Sync.savePlayer(id, true);
+    if (linked && confirm(`${acc.name} má v aplikaci účet propojený s dítětem ${m.full || m.n}. Odpojit ho od dítěte? (Účet zůstane, jen přestane vidět toto dítě.)`)
+        && await Sync.write('Účet se nepodařilo odpojit', sb.from('parent_players').delete().eq('parent_id', acc.id).eq('player_id', id))) {
+      await Sync.loaders.people(); Sync.toast('✔ Kontakt smazán a účet odpojen od dítěte.', true); App.render();
+    }
+  }
   static removePhoto(id) { const m = Model.byId(id), old = m.ph; m.ph = ''; App.render(); Sync.savePlayer(id, true); Photos.remove(old); }
 
   /** Úprava údaje rodiče; odkazy Zavolat / SMS / E-mail se přepíšou hned. */
