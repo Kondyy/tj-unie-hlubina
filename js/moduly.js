@@ -862,7 +862,7 @@ class Roster {
           <input type="tel" value="${esc(q.ph)}" placeholder="Telefon" oninput="Roster.setParent('${id}',${j},'ph',this.value)">
           <input type="email" value="${esc(q.em)}" placeholder="E-mail" oninput="Roster.setParent('${id}',${j},'em',this.value)">
           <div class="row" style="margin-top:6px"><a class="btn" id="tl${j}" href="tel:${esc(Util.phone(q.ph))}">📞 Zavolat</a>
-            <a class="btn" id="sm${j}" href="sms:${esc(Util.phone(q.ph))}">💬 SMS</a><a class="btn" id="ml${j}" href="mailto:${esc(q.em)}">✉ E-mail</a></div></div>`).join('')}
+            <a class="btn" id="sm${j}" href="sms:${esc(Util.phone(q.ph))}">💬 SMS</a><a class="btn" id="ml${j}" href="mailto:${esc(q.em)}">✉ E-mail</a></div>${UI.user.r == 'c' ? Roster.account(id, j, q) : ''}</div>`).join('')}
         <button class="chip" style="margin-top:10px" onclick="Roster.addParent('${id}')">+ Další rodič</button></div>
 
       <!-- d) ZDRAVÍ A POZNÁMKY -->
@@ -873,6 +873,42 @@ class Roster {
         <label class="mut">Poznámka trenéra<textarea rows="3" placeholder="Např. pochvala za bojovnost, zraněné koleno…" oninput="Roster.set('${id}','tn',this.value)">${esc(m.tn)}</textarea></label>
         <div class="mut" style="margin-top:6px">Ukládá se automaticky. Poznámku trenéra rodiče nevidí.</div>
         ${tags.length ? `<div style="margin-top:10px"><b>📝 Trenérský deník</b>${tags.map(n => `<div class="mut">${CONFIG.noteTags[n.g].slice(0,2)} ${n.d} – ${esc(n.x)}${n.sh ? ' <span title="Vidí rodič">👪</span>' : ''}${n.rem && !n.done ? ' ⏰ ' + Util.short(n.rem) : ''}</div>`).join('')}</div>` : ''}</div></div>`;
+  }
+
+  /** Účet rodiče v aplikaci (JEN TRENÉR): stav, propojení existujícího účtu s dítětem, nebo založení nového účtu. */
+  static account(id, j, q) {
+    const em = (q.em || '').trim().toLowerCase(), acc = em && Object.values(DB.users).find(x => x.r == 'p' && x.email.toLowerCase() == em);
+    if (acc && DB.links.some(l => l.parent_id == acc.id && l.player_id == id))
+      return `<div class="mut cg" style="margin-top:6px">✔ Rodič má účet v aplikaci${acc.mc ? ' · <span class="cr">čeká na změnu hesla</span>' : ''}</div>`;
+    if (acc) return `<button class="chip" style="margin-top:6px" onclick="Roster.linkAccount('${id}','${acc.id}')">🔗 Propojit účet ${esc(acc.name)} s dítětem</button>`;
+    if (UI.accFor != id + ':' + j) return `<button class="chip" style="margin-top:6px" onclick="Roster.accForm('${id}',${j})">🔑 Vytvořit účet pro rodiče</button>`;
+    return `<div style="margin-top:8px;border:1px solid var(--bd);border-radius:12px;padding:8px"><b>🔑 Nový účet rodiče</b>
+      <div class="mut" style="margin-top:4px">Použije se jméno a e-mail vyplněné výše. Rodič se přihlásí e-mailem a počátečním heslem, které si po prvním přihlášení změní. Účet se rovnou propojí s tímto dítětem.</div>
+      <label class="mut">Počáteční heslo (min. 8 znaků)<input id="acc-pass" type="text" autocomplete="off" value="${esc(Roster.lastPass())}"></label>
+      <div class="row" style="margin-top:6px"><button class="btn ok" onclick="Roster.createAccount('${id}',${j})">Vytvořit účet</button><button class="btn" style="flex:none" onclick="Roster.accForm('')">Zrušit</button></div>
+      ${UI.accMsg ? `<div class="mut ${UI.accOk ? 'cg' : 'cr'}" style="margin-top:6px">${esc(UI.accMsg)}</div>` : ''}</div>`;
+  }
+  /** Poslední použité počáteční heslo si pamatuje jen tento prohlížeč (v kódu aplikace být nesmí – repozitář je veřejný). */
+  static lastPass()  { try { return localStorage.getItem('tj-acc-pass') || ''; } catch (e) { return ''; } }
+  static accForm(id, j) { UI.accFor = id ? id + ':' + j : ''; UI.accMsg = ''; App.render(); }
+  static accMsgSet(t, ok) { UI.accMsg = t; UI.accOk = !!ok; App.render(); }
+  static async createAccount(id, j) {
+    const q = Model.byId(id).par[j], name = (q.n || '').trim(), email = (q.em || '').trim(), password = $('#acc-pass').value;
+    if (!name || !email) return Roster.accMsgSet('⚠ Nejdřív vyplňte jméno a e-mail rodiče.');
+    if (password.length < 8) return Roster.accMsgSet('⚠ Heslo musí mít aspoň 8 znaků.');
+    Roster.accMsgSet('Vytvářím účet…', true);
+    try {
+      await Sync.admin({action: 'create', name, email, password, role: 'p', kids: [id], phone: (q.ph || '').trim()});
+      try { localStorage.setItem('tj-acc-pass', password); } catch (e) {}
+      await Sync.loaders.people();
+      UI.accFor = ''; UI.accMsg = ''; UI.skipKeep = ['acc-pass'];
+      Sync.toast(`✔ Účet vytvořen: ${name}. Předejte rodiči e-mail a heslo.`, true); App.render();
+    } catch (e) { Roster.accMsgSet('⚠ ' + e.message + (/existuje/.test(e.message) ? ' Rodič má nejspíš účet u jiné kategorie – s dítětem ho propojí vedení klubu.' : '')); }
+  }
+  static async linkAccount(id, uid) {
+    if (await Sync.write('Účet se nepodařilo propojit', sb.from('parent_players').insert({parent_id: uid, player_id: id}))) {
+      await Sync.loaders.people(); Sync.toast('✔ Účet rodiče propojen s dítětem.', true); App.render();
+    }
   }
 
   /** Souhlas s focením podle účtů rodičů přiřazených k dítěti. */
