@@ -6,6 +6,17 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 27. 10. 2026 (účet pro dalšího rodiče)
+
+Trenér může rodiči z karty hráče rovnou založit účet v aplikaci. Databáze ani Edge Function se nemění.
+
+- V Soupisce → karta hráče → **Kontakty na rodiče** je u každého rodiče (i nově přidaného přes „+ Další rodič“) tlačítko **🔑 Vytvořit účet pro rodiče**. Použije se vyplněné jméno, e-mail a telefon, trenér zadá počáteční heslo a účet se hned propojí s dítětem. Rodič si heslo po prvním přihlášení změní.
+- Pokud už rodič s tímto e-mailem účet má, ukáže se **✔ Rodič má účet v aplikaci**, případně tlačítko **🔗 Propojit účet s dítětem**.
+- Tuto možnost vidí jen trenér (u hráčů své kategorie). Rodiče ji nemají, vedení a správce zakládají účty dál v záložce Uživatelé.
+- Počáteční heslo si pamatuje jen prohlížeč trenéra, v kódu aplikace není (repozitář je veřejný).
+
+---
+
 ## 22. 10. 2026 (rychlejší docházka s fotkami)
 
 Docházka jako mřížka fotek se už nezasekává. Databáze se nemění.
