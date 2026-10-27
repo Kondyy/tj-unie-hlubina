@@ -6,6 +6,15 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 27. 10. 2026 (smazání kontaktu na rodiče)
+
+Databáze se nemění.
+
+- Soupiska → karta hráče → **Kontakty na rodiče**: u každého rodiče je tlačítko **🗑**, které smaže jen tento jeden kontakt.
+- Pokud má rodič v aplikaci účet propojený s dítětem, aplikace se zeptá, jestli ho od dítěte odpojit. Účet samotný se nemaže.
+
+---
+
 ## 27. 10. 2026 (účet pro dalšího rodiče)
 
 Trenér může rodiči z karty hráče rovnou založit účet v aplikaci. Databáze ani Edge Function se nemění.
