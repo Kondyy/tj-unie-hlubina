@@ -28,7 +28,8 @@ class Model {
   }
   /** Příjmení trenérů, kteří potvrdili účast na události (bez potvrzení: příjmení určeného trenéra). */
   static coachSurnames(e) {
-    const L = Object.keys(DB.coachAtt).filter(k => DB.coachAtt[k] == 'y' && k.slice(k.indexOf('|') + 1) == String(e.id)).map(k => DB.coachNm[k]).filter(Boolean);
+    const admin = id => id != Sync.me && (DB.users[id] || {}).r == 'a';                   // správce se ostatním mezi trenéry neukazuje
+    const L = Object.keys(DB.coachAtt).filter(k => DB.coachAtt[k] == 'y' && k.slice(k.indexOf('|') + 1) == String(e.id) && !admin(k.slice(0, k.indexOf('|')))).map(k => DB.coachNm[k]).filter(Boolean);
     return [...new Set(L)].sort((a, b) => a.localeCompare(b, 'cs')).join(', ') || Util.surname(e.c);
   }
   static eventsOf(team)  { return DB.events.filter(e => e.tm == team).sort((a, b) => a.d - b.d); }
