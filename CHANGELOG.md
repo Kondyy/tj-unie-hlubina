@@ -6,6 +6,14 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 3. 11. 2026 (co s sebou jako poznámka)
+
+- **🎒 S sebou** se rodičům u akce ukazuje jen jako poznámka od trenéra. Odškrtávání „sbaleno“ je pryč.
+
+**V Supabase:** nic.
+
+---
+
 ## 3. 11. 2026 (sraz na prvním místě, správce mezi trenéry)
 
 - U zápasu je teď hlavní **čas srazu** (velkým tučným písmem) a výkop je vedle menším písmem: v seznamu zápasů, v detailu zápasu, v kalendáři rodičů a na kartě „Dnes“ (tam běží i odpočet do srazu).

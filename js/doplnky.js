@@ -106,21 +106,16 @@ class Weather {
 
 
 /* ---------------------------------------------------------------------
-   Bring – co s sebou: trenér napíše seznam, rodič si ho u akce odškrtává (pamatuje si to telefon)
+   Bring – co s sebou: trenér napíše poznámku, rodič ji u akce jen vidí
    --------------------------------------------------------------------- */
 class Bring {
   static DEF = 'Kopačky, chrániče, láhev s pitím, mikina';
-  static items(e) { return String(e.br || '').split(/[,\n]/).map(s => s.trim()).filter(Boolean); }
-  static got(k) { try { return JSON.parse(localStorage.getItem(k) || '{}'); } catch (e) { return {}; } }
   static parent(e) {
-    const L = Bring.items(e); if (!L.length || e.x) return '';
-    const k = 'unie-br-' + e.id + '-' + UI.kid, on = Bring.got(k);
-    return `<div style="margin-top:8px"><b>🎒 S sebou</b> <span class="mut">(${L.filter(x => on[x]).length}/${L.length} sbaleno)</span>
-      <div class="row" style="margin-top:4px">${L.map(x => `<button class="chip ${on[x] ? 'on' : ''}" onclick="Bring.tick('${Util.q(k)}','${Util.q(x)}')">${on[x] ? '✔ ' : ''}${esc(x)}</button>`).join('')}</div></div>`;
+    const t = String(e.br || '').trim(); if (!t || e.x) return '';
+    return `<div style="margin-top:8px"><b>🎒 S sebou:</b> <span style="white-space:pre-line">${esc(t)}</span></div>`;
   }
-  static tick(k, x) { const on = Bring.got(k); on[x] = !on[x]; try { localStorage.setItem(k, JSON.stringify(on)); } catch (e) {} App.render(); }
   static coach(e) {
-    return `<div class="card" style="margin-top:10px"><b>🎒 Co s sebou</b><div class="mut">Rodiče uvidí seznam u akce a můžou si věci odškrtávat. Položky oddělte čárkou.</div>
+    return `<div class="card" style="margin-top:10px"><b>🎒 Co s sebou</b><div class="mut">Rodiče to uvidí u akce jako poznámku.</div>
       <div class="row" style="margin-top:6px"><input id="br-${e.id}" value="${esc(e.br || '')}" placeholder="${esc(Bring.DEF)}" autocomplete="off"><button class="btn" style="flex:none" onclick="Bring.save(${e.id})">Uložit</button></div>
       ${e.br ? '' : `<button class="chip" style="margin-top:6px" onclick="$('#br-${e.id}').value=Bring.DEF">Vložit výchozí seznam</button>`}</div>`;
   }
