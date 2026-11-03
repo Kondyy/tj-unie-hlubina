@@ -72,7 +72,8 @@ class Venues {
 
 
 /* ---------------------------------------------------------------------
-   Weather – předpověď počasí u akce (Open-Meteo, zdarma a bez klíče), jen na domácích hřištích a 0–3 dny dopředu
+   Weather – předpověď počasí u akce (Open-Meteo, zdarma a bez klíče), jen na domácích hřištích a 0–3 dny dopředu;
+   v hale se neukazuje vůbec, u zápasu / turnaje jen když ji trenér nechal zapnutou (sloupec events.weather)
    --------------------------------------------------------------------- */
 class Weather {
   static data = null; static busy = false;
@@ -91,8 +92,19 @@ class Weather {
       }).catch(() => {});
   }
   static icon(c) { return c == 0 ? '☀️' : c <= 2 ? '🌤' : c == 3 ? '☁️' : c <= 48 ? '🌫' : c <= 67 ? '🌧' : c <= 77 ? '🌨' : c <= 82 ? '🌦' : c <= 86 ? '🌨' : '⛈'; }
+  /** Dá se u akce počasí vůbec ukázat? Jen venku na hřištích klubu (předpověď je pro jejich souřadnice), v hale ne. */
+  static allowed(e) { return !e.x && CONFIG.venues.includes(e.pl) && !/hala/i.test(e.pl); }
+  /** Trenér u zápasu / turnaje: přepínač, zda rodičům ukazovat počasí. */
+  static toggle(e) {
+    return Weather.allowed(e) ? `<label class="pl"><span>🌤 Zobrazit počasí</span><input type="checkbox" ${e.wx ? 'checked' : ''} onchange="Weather.set(${e.id}, this.checked)"></label>` : '';
+  }
+  static async set(id, on) {
+    const e = Model.event(id); if (!e) return;
+    if (!await Sync.write('Nastavení počasí se nepodařilo uložit', sb.from('events').update({weather: on}).eq('id', +id))) return App.render();
+    e.wx = on ? 1 : 0; App.render();
+  }
   static line(e) {
-    if (e.x || !CONFIG.venues.includes(e.pl)) return '';                // předpověď je pro hřiště klubu
+    if (!Weather.allowed(e) || (e.k == 'z' && !e.wx)) return '';        // hala / cizí hřiště / trenér počasí u zápasu vypnul
     const day = Util.dayDate(e.d), diff = Math.round((day - new Date().setHours(0, 0, 0, 0)) / 864e5);
     if (diff < 0 || diff > 3) return '';
     Weather.load();

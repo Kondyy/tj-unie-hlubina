@@ -1159,6 +1159,7 @@ alter table public.events add column if not exists summary_sent boolean not null
 alter table public.events add column if not exists meet_place   text not null default '';     -- místo srazu u zápasu (čas srazu je ve sloupci meet, např. 9:15)
 alter table public.events add column if not exists finished     boolean not null default false; -- zápas ukončen: trenér potvrdil docházku (a výsledek)
 alter table public.events add column if not exists lineup       jsonb not null default '[]';   -- kdo zápas hrál (jména) – vidí i rodiče, kteří docházku spoluhráčů nevidí
+alter table public.events add column if not exists weather      boolean not null default true;  -- zápas / turnaj: ukazovat předpověď počasí (trenér může vypnout)
 -- Akce, které založil správce, nemají jako trenéra uvádět „Správce“
 update public.events e set coach = '' from public.profiles p where p.role = 'a' and e.coach <> '' and e.coach = p.name;
 create index if not exists events_sub_coach_idx on public.events(sub_coach);
