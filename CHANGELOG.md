@@ -19,6 +19,8 @@ Zápas má čas srazu a po zápase se ukončí: trenér potvrdí docházku nomin
 - Odehraný zápas se přičte hráčům, kteří byli přítomni (dřív všem nominovaným). U turnaje se odehraný zápas přičte jednou při ukončení turnaje, ne za každé utkání.
 - Docházka ze zápasů se ukládá zvlášť a **do procent docházky na tréninky se nepočítá**.
 
+---
+
 ## 27. 10. 2026 (účet pro dalšího rodiče)
 
 Trenér může rodiči z karty hráče rovnou založit účet v aplikaci. Databáze ani Edge Function se nemění.
