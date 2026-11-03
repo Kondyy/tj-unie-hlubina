@@ -84,7 +84,7 @@ const CONFIG = {
   attStates: [['P','Přítomen','ok'], ['O','Omluven','wa'], ['N','Neomluven','no']],           // [kód, text, barva]
   msgTargets: {all:'📢 Všem členům', trainers:'🧢 Jen trenérům', user:'👤 Konkrétní osobě'}, // příjemci zpráv vedení
   msgBadges:  {all:['📢 Všem členům','z'], trainers:['🧢 Jen trenérům','wa'], user:['👤 Osobně vám','ok']},
-  planner: { from: 900, to: 1140,                                      // časové okno plánovače v minutách (15:00–19:00)
+  planner: { from: 900, to: 1200,                                      // časové okno plánovače v minutách (15:00–20:00)
              fields: ['A','B','C','Hala'], teams: ['U7','U8','U9','U11'] },
   paidWords: /^(ano|a|1|x|✔|✓|zaplaceno|true|yes)$/i,                  // co v Excelu znamená "zaplaceno"
   priceInHeader: /[(\-–]\s*(\d[\d\s]*)\s*(kč|kc)?\s*\)?\s*$/i          // částka v záhlaví sloupce, např. "Dresy (600)"
@@ -226,6 +226,8 @@ class Util {
   /** "16:30" → 990 minut. */
   static toMin(x) { const [a, b] = x.split(':'); return +a * 60 + +b; }
   /** 990 → "16:30". */
+  /** Čas akce: „16:00–17:30“, když je zadaný konec, jinak jen začátek. */
+  static timeRange(e) { return e.te ? `${e.t}–${e.te}` : e.t; }
   static toTime(m) { return Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0'); }
   /** Červený odznak s počtem (nebo nic, když je 0). */
   static badge(n) { return n ? `<i class="bd">${n}</i>` : ''; }
