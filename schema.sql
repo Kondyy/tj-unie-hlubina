@@ -1502,6 +1502,39 @@ select cron.schedule('purge-client-errors', '30 2 * * *',   'select public.purge
 
 
 -- ---------------------------------------------------------------------
+-- Čas tréninku od–do (11/2026)
+-- ---------------------------------------------------------------------
+-- Konec tréninku (čas od–do). Prázdný = neuvedený, kalendář pak počítá 90 minut.
+alter table public.events add column if not exists time_end text not null default '';
+
+-- Tréninky z rozvrhu hřišť dostanou i čas konce rezervace
+create or replace function public.sync_plan_events(week_start date) returns int
+language plpgsql security definer set search_path = public as
+$$ declare n int; begin
+  if week_start < current_date - 7 or week_start > current_date + 90 then raise exception 'week out of range'; end if;
+  insert into public.events (kind, team, event_date, time, time_end, place, meet, coach, opponent, cancelled, plan_id, created_by)
+  select 't', p.team, week_start + p.day,
+         lpad((p.start_min / 60)::text, 2, '0') || ':' || lpad((p.start_min % 60)::text, 2, '0'),
+         lpad((p.end_min / 60)::text, 2, '0') || ':' || lpad((p.end_min % 60)::text, 2, '0'),
+         case p.field when 'Hala' then 'Hala' when 'B' then 'Hřiště B – Umělka' when 'C' then 'Hřiště C – Loučka' else 'Hřiště ' || p.field end,
+         '15 min předem',
+         coalesce((select pr.name from public.profiles pr where pr.role = 'c' and pr.team = p.team order by pr.created_at limit 1), ''),
+         '', false, p.id, auth.uid()
+    from public.plan p
+   where not exists (select 1 from public.events e where e.plan_id = p.id and e.event_date = week_start + p.day)
+     and not exists (select 1 from public.events_skip k where k.plan_id = p.id and k.event_date = week_start + p.day)
+     and not exists (select 1 from public.events e where e.team = p.team and e.kind = 't' and e.event_date = week_start + p.day
+                       and e.time = lpad((p.start_min / 60)::text, 2, '0') || ':' || lpad((p.start_min % 60)::text, 2, '0'))
+  on conflict do nothing;
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+-- Už vytvořené tréninky z rozvrhu doplní o konec podle rezervace
+update public.events e set time_end = lpad((p.end_min / 60)::text, 2, '0') || ':' || lpad((p.end_min % 60)::text, 2, '0')
+  from public.plan p where e.plan_id = p.id and e.kind = 't' and e.time_end = '';
+
+-- ---------------------------------------------------------------------
 -- 5. OPRÁVNĚNÍ ROLÍ (RLS je filtruje; anon nemá k datům přístup)
 -- ---------------------------------------------------------------------
 grant usage on schema public to anon, authenticated;

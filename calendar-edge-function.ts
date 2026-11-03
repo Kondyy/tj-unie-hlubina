@@ -10,7 +10,7 @@
 // =====================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-type Ev = { id: number; kind: string; team: string; event_date: string; time: string; place: string; meet: string; coach: string; opponent: string; cancelled: boolean };
+type Ev = { id: number; kind: string; team: string; event_date: string; time: string; time_end?: string; place: string; meet: string; coach: string; opponent: string; cancelled: boolean };
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const esc = (s: unknown) => String(s ?? "").replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
@@ -45,7 +45,11 @@ export function buildIcs(events: Ev[], now: Date = new Date()): string {
     const [y, mo, d] = e.event_date.split("-").map(Number);
     const [hh, mm] = parseTime(e.time);
     const start = new Date(Date.UTC(y, mo - 1, d, hh, mm));
-    const end = new Date(start.getTime() + (e.kind === "z" ? 120 : 90) * 60000);
+    let end = new Date(start.getTime() + (e.kind === "z" ? 120 : 90) * 60000);
+    if (/^\d{1,2}:\d{2}$/.test(e.time_end ?? "")) {                    // trenér zadal konec tréninku
+      const [eh, em] = parseTime(e.time_end!), fin = new Date(Date.UTC(y, mo - 1, d, eh, em));
+      if (fin > start) end = fin;
+    }
     const title = (e.kind === "z" ? `🏆 Zápas ${e.team}${e.opponent ? " vs. " + e.opponent : ""}` : `⚽ Trénink ${e.team}`);
     const desc = [e.meet ? `Sraz: ${e.meet}` : "", e.coach ? `Trenér: ${e.coach}` : ""].filter(Boolean).join("\n");
     L.push("BEGIN:VEVENT", `UID:event-${e.id}@tj-unie-hlubina`, `DTSTAMP:${dtstamp}`, `DTSTART:${local(start)}`, `DTEND:${local(end)}`,

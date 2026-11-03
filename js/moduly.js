@@ -71,7 +71,7 @@ class Calendar {
     const k = UI.kid + '|' + e.id, r = DB.responses[k], cl = e.x ? 'x' : e.k;
     return `<div class="card ev ${cl}">
       <div class="pay"><b>${e.k == 'z' ? (e.tour ? '🏅 Turnaj: ' : '🏆 Zápas vs. ') + esc(e.o) : '⚽ Trénink'}</b><span class="pill ${cl}">${e.x ? 'Zrušeno' : e.k == 'z' ? (e.tour ? 'Turnaj' : 'Zápas') : 'Trénink'}</span></div>
-      <div class="mut">🕒 ${Util.date(e.d)}, ${e.t} · 📍 ${esc(e.pl)}<br>🤝 Sraz: ${esc(e.m)} · 👤 ${esc(Model.coachSurnames(e))}</div>
+      <div class="mut">🕒 ${Util.date(e.d)}, ${Util.timeRange(e)} · 📍 ${esc(e.pl)}<br>🤝 Sraz: ${esc(e.m)} · 👤 ${esc(Model.coachSurnames(e))}</div>
       ${Weather.line(e)}
       ${e.x ? '' : Calendar.nomState(e)}
       ${e.x || Calendar.notNominated(e) ? '' : `<div class="row" style="margin-top:10px">
@@ -329,20 +329,21 @@ class Attendance {
       return `${Dnes.coach(team)}${Attendance.mine()}${OfflineQ.badge()}${SubCoach.list()}<h2>Tréninky ${team}</h2><div class="g2">${trainings.map(t => {
         const k = Attendance.marked(t);
         return `<div class="card ev ${t.x ? 'x' : 't'}" ${t.x ? '' : `style="cursor:pointer" onclick="Attendance.open('${t.id}')"`}>
-          <div class="pay"><b>⚽ ${Util.date(t.d)} · ${t.t}</b><span class="pill ${t.x ? 'x' : k == count ? 'ok' : 'wa'}">${t.x ? 'Zrušeno' : k + '/' + count + ' označeno'}</span></div>
+          <div class="pay"><b>⚽ ${Util.date(t.d)} · ${Util.timeRange(t)}</b><span class="pill ${t.x ? 'x' : k == count ? 'ok' : 'wa'}">${t.x ? 'Zrušeno' : k + '/' + count + ' označeno'}</span></div>
           <div class="mut">📍 ${esc(t.pl)}${t.sc ? ' · 🙋 zástup: ' + esc(t.c) : ''}</div>${Weather.line(t)}${t.x ? '' : '<div class="mut">Klepnutím otevřete docházku →</div>'}
           <div class="row" style="margin-top:8px"><button class="btn" onclick="event.stopPropagation();Events.cancel('${t.id}')">${t.x ? 'Obnovit trénink' : 'Zrušit trénink'}</button><button class="btn" style="flex:none;color:var(--r)" onclick="event.stopPropagation();Events.remove('${t.id}')">🗑 Smazat</button></div></div>`;
       }).join('') || Look.empty('ball', 'Zatím žádné tréninky', 'Tento týden zatím žádný trénink. Tréninky se přidají automaticky podle rozvrhu hřišť, který nastavuje vedení, nebo je přidejte ručně níže.')}</div>
       <h2>+ Přidat trénink ručně</h2><div class="card">
         <div class="row"><select id="tr-day">${CONFIG.days.map((n, i) => `<option value="${i}">${Util.date(i)}</option>`).join('')}</select>
-          <input id="tr-time" placeholder="Čas (16:00)"></div>
+        </div>
+        <div class="row"><label class="mut">Od<input id="tr-time" type="time" value="16:00" step="300"></label><label class="mut">Do<input id="tr-end" type="time" value="17:30" step="300"></label></div>
         ${Venues.select('tr-place')}
         <label class="pl"><span>🔔 Upozornit rodiče na nový trénink</span><input id="tr-notify" type="checkbox"></label>
         <button class="btn ok" style="width:100%" onclick="Events.add('t')">Přidat trénink</button></div>`;
     }
     return `<button class="btn" onclick="Attendance.close()">← Tréninky</button>        <!-- 2) detail tréninku -->
-      <h2>${Util.date(e.d)} · ${e.t} · ${esc(e.pl)}</h2>${Weather.line(e)}${Attendance.coachCard(e)}
-      <div class="row" style="margin-top:10px">${Events.notifyBtn(e)}</div>${Venues.placeBox(e)}${OfflineQ.badge()}${Attendance.answers(e)}
+      <h2>${Util.date(e.d)} · ${Util.timeRange(e)} · ${esc(e.pl)}</h2>${Weather.line(e)}${Attendance.coachCard(e)}
+      <div class="row" style="margin-top:10px">${Events.notifyBtn(e)}</div>${Events.timeBox(e)}${Venues.placeBox(e)}${OfflineQ.badge()}${Attendance.answers(e)}
       <button class="btn ok" style="width:100%;margin-top:10px" onclick="Attendance.allPresent(${e.id})">✔ Všichni ostatní přítomni</button>
       ${!AttGrid.isList() ? AttGrid.view(e) : `<button class="btn" style="width:100%;margin-top:10px" onclick="AttGrid.setList(false)">📷 Mřížka fotek (rychlé klepání)</button>
       <div class="g2" style="margin-top:10px">${Model.membersOf(team).map(m => {
@@ -554,7 +555,7 @@ class Events {
   /** Zruší / obnoví událost; při zrušení dostanou rodiče notifikaci. */
   /** Upozornění rodičům kategorie na akci (posílá se jen na výběr trenéra – nic automaticky). */
   static notifyParents(e, silent) {
-    Notifs.send('P', `📅 ${e.k == 'z' ? 'Zápas vs. ' + e.o : 'Trénink'} ${Util.date(e.d)} v ${e.t} · ${e.pl} (${e.tm})`, {team: e.tm, tab: 'cal'});
+    Notifs.send('P', `📅 ${e.k == 'z' ? 'Zápas vs. ' + e.o : 'Trénink'} ${Util.date(e.d)} v ${Util.timeRange(e)} · ${e.pl} (${e.tm})`, {team: e.tm, tab: 'cal'});
     if (!silent) Sync.toast('✔ Rodiče kategorie ' + e.tm + ' upozorněni.', true);
   }
   /** Tlačítko „Upozornit rodiče“ u akce. */
@@ -590,18 +591,48 @@ class Events {
   static async add(k) {
     const u = UI.user, pf = k == 'z' ? 'ev' : 'tr', d = +$('#' + pf + '-day').value, place = $('#' + pf + '-place').value;
     const o = k == 'z' ? ($('#ev-opp').value.trim() || '?') : '', time = /^\d{1,2}:\d{2}$/.test($('#' + pf + '-time').value.trim()) ? $('#' + pf + '-time').value.trim() : '16:00';
+    const te = k == 't' ? Events.cleanTime(($('#tr-end') || {}).value) : '';            // konec tréninku (nepovinný)
     if (place == '__new') return alert('Vyberte místo.');
+    if (te && Util.toMin(te) <= Util.toMin(time)) return alert('Konec tréninku musí být později než začátek.');
     const tour = k == 'z' && !!($('#ev-tour') || {}).checked;
-    const r = await Sync.write('Událost se nepodařilo přidat', sb.from('events').insert({
-      kind: k, team: u.team, event_date: Util.iso(Util.dayDate(d)), time, place, meet: '15 min předem', coach: u.name, opponent: o, tour}).select().single());
+    const row = {kind: k, team: u.team, event_date: Util.iso(Util.dayDate(d)), time, place, meet: '15 min předem', coach: u.name, opponent: o, tour};
+    const r = await Sync.write('Událost se nepodařilo přidat', Events.withEnd(row, te, x => sb.from('events').insert(x).select().single()));
     if (!r) return;
-    const ne = {id: r.data.id, k, tm: u.team, d, t: time, pl: place, m: '15 min předem', c: u.name, o, x: 0, br: '', tour: tour ? 1 : 0, rank: '', sc: null};
+    const ne = {id: r.data.id, k, tm: u.team, d, t: time, te, pl: place, m: '15 min předem', c: u.name, o, x: 0, br: '', tour: tour ? 1 : 0, rank: '', sc: null};
     if ($('#ev-tour')) $('#ev-tour').checked = false;
     DB.events.push(ne);
     if ($('#' + pf + '-notify').checked) Events.notifyParents(ne);                       // jen když to trenér zvolil
     $('#' + pf + '-notify').checked = false;
-    UI.skipKeep = [pf + '-time', 'ev-opp'];
+    UI.skipKeep = [pf + '-time', 'tr-end', 'ev-opp'];
     App.render();
+  }
+  /** Uloží i konec tréninku; když databáze ještě nemá sloupec time_end (neproběhl schema.sql), uloží aspoň začátek. */
+  static async withEnd(row, te, run, always) {
+    if (!te && !always) return run(row);
+    const r = await run({...row, time_end: te});
+    return r.error && /time_end/.test(r.error.message || '') ? run(row) : r;
+  }
+  /** „7:05“ → „07:05“; neplatný nebo prázdný čas → ''. */
+  static cleanTime(v) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(v || '').trim());
+    return m && +m[1] < 24 && +m[2] < 60 ? m[1].padStart(2, '0') + ':' + m[2] : '';
+  }
+  /** Trenér: úprava času tréninku od–do (u zrušeného se neukazuje). */
+  static timeBox(e) {
+    if (e.x || e.k != 't') return '';
+    return `<div class="row" style="margin-top:8px;align-items:center"><span style="flex:none">🕒 Čas</span>
+      <input id="tt-from-${e.id}" type="time" step="300" value="${esc(Events.cleanTime(e.t))}" aria-label="Začátek tréninku">
+      <span style="flex:none">–</span><input id="tt-to-${e.id}" type="time" step="300" value="${esc(e.te)}" aria-label="Konec tréninku">
+      <button class="btn" style="flex:none" onclick="event.stopPropagation();Events.setTime(${e.id})">Uložit</button></div>`;
+  }
+  static async setTime(id) {
+    const e = Model.event(id); if (!e) return;
+    const t = Events.cleanTime(($('#tt-from-' + id) || {}).value), te = Events.cleanTime(($('#tt-to-' + id) || {}).value);
+    if (!t) return alert('Zadejte začátek tréninku.');
+    if (te && Util.toMin(te) <= Util.toMin(t)) return alert('Konec tréninku musí být později než začátek.');
+    if (t == Events.cleanTime(e.t) && te == e.te) return;
+    if (!await Sync.write('Čas se nepodařilo uložit', Events.withEnd({time: t}, te, x => sb.from('events').update(x).eq('id', id), true))) return;
+    e.t = t; e.te = te; Sync.toast('✔ Čas tréninku uložen.', true); App.render();
   }
 }
 
@@ -1257,12 +1288,12 @@ class Planner {
   }
 
   /** Záloha: trénink z rezervace vytvoří aplikace sama (kdyby v databázi chyběla funkce sync_plan_events). */
-  static async createTrainingDirect(team, d, s, field) {
-    const time = Util.toTime(s).replace(/^(\d):/, '0$1:'), date = Util.iso(Util.dayDate(d));
+  static async createTrainingDirect(team, d, s, en, field) {
+    const time = Util.toTime(s).replace(/^(\d):/, '0$1:'), time_end = Util.toTime(en).replace(/^(\d):/, '0$1:'), date = Util.iso(Util.dayDate(d));
     const place = Util.venue(field);
     const coach = (Object.values(DB.users).find(x => x.r == 'c' && x.team == team) || {}).name || '';
     if (DB.events.some(e => e.tm == team && e.k == 't' && e.d == d && e.t == time)) return;
-    await Sync.write('Trénink se nepodařilo vytvořit', sb.from('events').insert({kind: 't', team, event_date: date, time, place, meet: '15 min předem', coach, opponent: ''}));
+    await Sync.write('Trénink se nepodařilo vytvořit', Events.withEnd({kind: 't', team, event_date: date, time, place, meet: '15 min předem', coach, opponent: ''}, time_end, x => sb.from('events').insert(x)));
   }
 
   /** Rezervace s validací (a uložením do databáze): čas, kolize hřiště, tým nemůže trénovat na dvou místech zároveň. */
@@ -1283,7 +1314,7 @@ class Planner {
           DB.plan.push({id: r.data.id, d, f: field, tm: team, s, e});
           // z rezervace vznikne trénink (databázová funkce) → uvidí ho trenéři i rodiče kategorie; ti dostanou notifikaci
           const sy = await sb.rpc('sync_plan_events', {week_start: Util.iso(Util.dayDate(0))});
-          if (sy.error) await Planner.createTrainingDirect(team, d, s, field);   // databáze ještě nemá funkci → vytvořit přímo
+          if (sy.error) await Planner.createTrainingDirect(team, d, s, e, field);   // databáze ještě nemá funkci → vytvořit přímo
           await Sync.loaders.events();
           const txt = `📅 Nový trénink ${team}: ${Util.date(d)} ${Util.toTime(s)}–${Util.toTime(e)} · ${Util.venue(field)}`;
           Notifs.send('C', txt, {team, tab: 'att'});                       // jen trenérům kategorie; rodiče trenér upozorní sám

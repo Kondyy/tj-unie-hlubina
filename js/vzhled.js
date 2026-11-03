@@ -241,7 +241,7 @@ class Dnes {
     const kind = e.k == 'z' ? (e.tour ? '🏅 Turnaj · ' + esc(e.o) : '🏆 Zápas · vs. ' + esc(e.o)) : '⚽ Trénink';
     return `<div class="card dnes ${e.k}"><div class="pay"><span class="when">${Dnes.when(e)}</span><span class="kind">${esc(e.tm)}${who ? ' · ' + esc(who) : ''}</span></div>
       <div class="kind" style="margin-top:6px">${kind}</div>
-      <div class="big">${esc(e.t)}</div>
+      <div class="big">${esc(Util.timeRange(e))}</div>
       <div class="ln">📍 ${esc(e.pl)}</div>
       ${e.m ? `<div class="ln">🤝 Sraz: ${esc(e.m)}</div>` : ''}
       <div class="cd" data-at="${+Dnes.at(e)}">${Dnes.parts(+Dnes.at(e))}</div></div>`;

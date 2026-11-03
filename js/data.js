@@ -355,7 +355,7 @@ class Sync {
       const a = Util.iso(Util.dayDate(0)), b = Util.iso(Util.dayDate(6));
       try { await sb.rpc('sync_plan_events', {week_start: a}); } catch (e) { console.warn('sync_plan_events', e); }   // tréninky vzniklé z rozvrhu hřišť (idempotentní)
       const ev = await Sync.fetchAll('events', q => q.gte('event_date', a).lte('event_date', b).order('id'));
-      DB.events = ev.map(e => ({id: e.id, k: e.kind, tm: e.team, d: Util.dayIndex(e.event_date), t: e.time, pl: e.place, m: e.meet, c: e.coach, o: e.opponent || '', x: e.cancelled ? 1 : 0, nc: e.nom_closed ? 1 : 0,
+      DB.events = ev.map(e => ({id: e.id, k: e.kind, tm: e.team, d: Util.dayIndex(e.event_date), t: e.time, te: e.time_end || '', pl: e.place, m: e.meet, c: e.coach, o: e.opponent || '', x: e.cancelled ? 1 : 0, nc: e.nom_closed ? 1 : 0,
                                 br: e.bring || '', tour: e.tour ? 1 : 0, rank: e.placement || '', sc: e.sub_coach || null}));
       DB.cpool = {};                                                  // spolujízda se dočte znovu u zobrazených zápasů
     },
