@@ -21,6 +21,21 @@ Zápas má čas srazu a po zápase se ukončí: trenér potvrdí docházku nomin
 
 ---
 
+## 3. 11. 2026 (čas tréninku od–do, plánovač do 20:00)
+
+Trenér u tréninku zadává čas **od – do** a plánovač hřiště pokrývá **15:00–20:00**.
+
+- **Tréninky → + Přidat trénink ručně**: místo jednoho políčka „Čas“ jsou dvě, **Od** a **Do**.
+- V detailu tréninku je nový řádek **🕒 Čas** (od – do) s tlačítkem **Uložit**, takže trenér může upravit i trénink, který vznikl z rozvrhu hřiště.
+- Rodiče, trenéři i karta „Dnes“ vidí čas jako např. „16:00–17:30“. Stejně tak upozornění rodičům.
+- Tréninky vytvořené z rozvrhu hřiště dostanou konec podle rezervace (i ty, které už existují).
+- Plánovač hřiště má časovou osu 15:00–20:00, takže jde rezervovat např. U9 do 19:30.
+- Odběr kalendáře (Edge Function `calendar`) bere konec tréninku, když je zadaný (jinak dál 90 minut).
+
+**V Supabase:** spusťte znovu celý `schema.sql` (přidá sloupec `events.time_end` a upraví funkci `sync_plan_events`). Dokud se to nespustí, aplikace funguje dál, jen se konec tréninku neuloží. Edge Function `calendar` můžete znovu nasadit ze souboru `calendar-edge-function.ts` (nepovinné).
+
+---
+
 ## 27. 10. 2026 (účet pro dalšího rodiče)
 
 Trenér může rodiči z karty hráče rovnou založit účet v aplikaci. Databáze ani Edge Function se nemění.
