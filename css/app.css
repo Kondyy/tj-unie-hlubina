@@ -316,5 +316,5 @@ html.big h2{font-size:24px}
 .mo .card.rvm{max-width:520px}
 .rvm .card{max-width:none}
 .srz{font-size:15px;color:var(--tx)}                                         /* sraz u zápasu: hlavní čas pro rodiče */
-.srz b,b.srz{font:800 20px var(--disp);letter-spacing:.3px;color:var(--tx)}
-b.srz{font-size:16px}
+.srz b,b.srz{font-weight:800;font-size:17px;color:var(--tx)}                  /* jen tučně a o kousek větší, písmo zůstává stejné */
+b.srz{font-size:15px}
