@@ -913,9 +913,15 @@ create policy att_select on public.attendance for select to authenticated using 
 create policy att_insert on public.attendance for insert to authenticated with check (public.can_see_player(player_id));
 create policy att_update on public.attendance for update to authenticated using (public.can_see_player(player_id)) with check (public.can_see_player(player_id));
 
+-- Je uživatel správce? (security definer: rodiče a trenéři profil správce jinak nevidí)
+create or replace function public.is_admin_user(uid uuid) returns boolean
+language sql stable security definer set search_path = public as
+$$ select exists (select 1 from public.profiles where id = uid and role = 'a') $$;
 create policy catt_select on public.coach_attendance for select to authenticated using (
-  coach_id = (select auth.uid()) or (select public.is_mgmt())
-  or exists (select 1 from public.events e where e.id = event_id and public.can_see_team(e.team)));   -- rodiče a trenéři vidí, kdo z trenérů přijde
+  coach_id = (select auth.uid())
+  or (not public.is_admin_user(coach_id)                                -- účast správce vidí jen on sám
+      and ((select public.is_mgmt())
+           or exists (select 1 from public.events e where e.id = event_id and public.can_see_team(e.team)))));   -- rodiče a trenéři vidí, kdo z trenérů přijde
 select pg_temp.write_policies('coach_attendance', 'catt', '(select public.is_mgmt()) or (coach_id = (select auth.uid()) and (select public.app_role()) in (''c'',''a''))');
 
 create policy nom_select on public.nominations for select to authenticated using (public.can_see_player(player_id));
@@ -1153,6 +1159,8 @@ alter table public.events add column if not exists summary_sent boolean not null
 alter table public.events add column if not exists meet_place   text not null default '';     -- místo srazu u zápasu (čas srazu je ve sloupci meet, např. 9:15)
 alter table public.events add column if not exists finished     boolean not null default false; -- zápas ukončen: trenér potvrdil docházku (a výsledek)
 alter table public.events add column if not exists lineup       jsonb not null default '[]';   -- kdo zápas hrál (jména) – vidí i rodiče, kteří docházku spoluhráčů nevidí
+-- Akce, které založil správce, nemají jako trenéra uvádět „Správce“
+update public.events e set coach = '' from public.profiles p where p.role = 'a' and e.coach <> '' and e.coach = p.name;
 create index if not exists events_sub_coach_idx on public.events(sub_coach);
 alter table public.results add column if not exists event_id bigint references public.events(id) on delete set null;   -- zápas / turnaj, ke kterému výsledek patří
 create index if not exists results_event_idx on public.results(event_id);
