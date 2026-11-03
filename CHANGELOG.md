@@ -6,6 +6,16 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 3. 11. 2026 (počasí u akcí)
+
+- **🌤 Počasí** se u tréninků a akcí v hale už nezobrazuje.
+- U **zápasů a turnajů** může trenér počasí zapnout nebo vypnout – při přidání zápasu i v detailu zápasu (přepínač „Zobrazit počasí“). Výchozí je zapnuto.
+
+**V Supabase:** spusťte v SQL Editoru:
+`alter table public.events add column if not exists weather boolean not null default true; notify pgrst, 'reload schema';`
+
+---
+
 ## 3. 11. 2026 (co s sebou jako poznámka)
 
 - **🎒 S sebou** se rodičům u akce ukazuje jen jako poznámka od trenéra. Odškrtávání „sbaleno“ je pryč.

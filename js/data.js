@@ -360,7 +360,7 @@ class Sync {
       const ev = await Sync.fetchAll('events', q => q.gte('event_date', a).lte('event_date', b).order('id'));
       DB.events = ev.map(e => ({id: e.id, k: e.kind, tm: e.team, d: Util.dayIndex(e.event_date), t: e.time, te: e.time_end || '', pl: e.place, m: e.meet, c: e.coach, o: e.opponent || '', x: e.cancelled ? 1 : 0, nc: e.nom_closed ? 1 : 0,
                                 br: e.bring || '', tour: e.tour ? 1 : 0, rank: e.placement || '', sc: e.sub_coach || null,
-                                mpl: e.meet_place || '', fin: e.finished ? 1 : 0, lu: Array.isArray(e.lineup) ? e.lineup : []}));
+                                mpl: e.meet_place || '', fin: e.finished ? 1 : 0, lu: Array.isArray(e.lineup) ? e.lineup : [], wx: e.weather === false ? 0 : 1}));
       DB.events.forEach(e => { if (e.k == 'z') DB.zids.add(String(e.id)); });
       DB.cpool = {};                                                  // spolujízda se dočte znovu u zobrazených zápasů
     },

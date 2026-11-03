@@ -463,7 +463,7 @@ class Events {
         <div class="pay" style="margin-top:8px"><span class="srz">🤝 Sraz <b>${e.m ? esc(e.m) : '—'}</b></span><span>🕒 Výkop <b>${esc(e.t)}</b></span></div>
         ${note ? `<div class="mut">${esc(note)}</div>` : ''}
         ${e.x ? '' : UI.meetEdit == e.id ? Events.meetBox(e) : `<button class="btn" style="width:100%;margin-top:6px" onclick="Events.toggleMeet(${e.id})">✏ Změnit výkop a sraz</button>`}
-        ${Weather.line(e)}${Venues.placeBox(e)}
+        ${e.x ? '' : Weather.toggle(e)}${Weather.line(e)}${Venues.placeBox(e)}
         <div class="row" style="margin-top:8px">
           ${!e.x ? `<button class="btn" onclick="Events.toggleNomination('${e.id}')">${e.nc ? '🔒 ' : ''}Nominace (${(DB.nominations[e.id] || []).length})</button>` : ''}
           ${Events.notifyBtn(e)}
@@ -486,6 +486,7 @@ class Events {
       <input id="ev-time" placeholder="Výkop (např. 10:00)" inputmode="numeric" oninput="Events.kickoffChanged('ev')"><input id="ev-opp" placeholder="Soupeř (u turnaje název turnaje)">
       ${Events.meetFields('ev')}
       <label class="pl"><span>🏅 Turnaj (víc utkání v jeden den)</span><input id="ev-tour" type="checkbox"></label>
+      <label class="pl"><span>🌤 Zobrazit počasí (jen na našich hřištích venku)</span><input id="ev-wx" type="checkbox" checked></label>
       <label class="pl"><span>🔔 Upozornit rodiče na nový zápas</span><input id="ev-notify" type="checkbox"></label>
       <button class="btn ok" style="width:100%" onclick="Events.add('z')">Přidat zápas</button></div>`;
   }
@@ -794,9 +795,12 @@ class Events {
     const mt = k == 'z' ? Events.readMeet('ev') : {m: '15 min předem', mpl: ''}; if (!mt) return;
     const row = {kind: k, team: u.team, event_date: Util.iso(Util.dayDate(d)), time, place, meet: mt.m, coach: u.r == 'a' ? '' : u.name, opponent: o, tour};
     if (k == 'z') row.meet_place = mt.mpl;
+    const wx = k != 'z' || !$('#ev-wx') || $('#ev-wx').checked;
+    if (!wx) row.weather = false;                                                         // výchozí v databázi je zapnuto
     const r = await Sync.write('Událost se nepodařilo přidat', Events.withEnd(row, te, x => sb.from('events').insert(x).select().single()));
     if (!r) return;
-    const ne = {id: r.data.id, k, tm: u.team, d, t: time, te, pl: place, m: mt.m, mpl: mt.mpl, c: u.r == 'a' ? '' : u.name, o, x: 0, br: '', tour: tour ? 1 : 0, rank: '', sc: null, fin: 0, lu: []};
+    const ne = {id: r.data.id, k, tm: u.team, d, t: time, te, pl: place, m: mt.m, mpl: mt.mpl, c: u.r == 'a' ? '' : u.name, o, x: 0, br: '', tour: tour ? 1 : 0, rank: '', sc: null, fin: 0, lu: [], wx: wx ? 1 : 0};
+    if ($('#ev-wx')) $('#ev-wx').checked = true;
     if (k == 'z') DB.zids.add(String(ne.id));
     if ($('#ev-tour')) $('#ev-tour').checked = false;
     DB.events.push(ne);
