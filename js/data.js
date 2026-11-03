@@ -74,15 +74,17 @@ class Model {
   /** [počet účastí, počet tréninků] hráče (historie + označené tréninky). */
   static attCount(m) {
     let p = m.a[0], t = m.a[1];
-    Object.entries(DB.att).forEach(([k, v]) => { if (k.slice(k.indexOf('|') + 1) == m.n) { t++; if (v == 'P') p++; } });
+    Object.entries(DB.att).forEach(([k, v]) => { if (k.slice(k.indexOf('|') + 1) == m.n && !Model.isMatchKey(k)) { t++; if (v == 'P') p++; } });
     return [p, t];
   }
   /** Součty z celé zaznamenané docházky hráče: {p: přítomen, o: omluven, n: neomluven, t: celkem}. */
   static attStates(m) {
     const r = {p: m.a[0], o: Math.max(0, m.a[1] - m.a[0]), n: 0, t: m.a[1]};          // starší historie nezná důvod absence → počítá se jako omluvená
-    Object.entries(DB.att).forEach(([k, v]) => { if (k.slice(k.indexOf('|') + 1) != m.n) return; r.t++; if (v == 'P') r.p++; else if (v == 'O') r.o++; else if (v == 'N') r.n++; });
+    Object.entries(DB.att).forEach(([k, v]) => { if (k.slice(k.indexOf('|') + 1) != m.n || Model.isMatchKey(k)) return; r.t++; if (v == 'P') r.p++; else if (v == 'O') r.o++; else if (v == 'N') r.n++; });
     return r;
   }
+  /** Patří klíč docházky "idUdálosti|jméno" k zápasu? (docházka ze zápasů se počítá zvlášť) */
+  static isMatchKey(k) { return DB.zids.has(k.slice(0, k.indexOf('|'))); }
   static attPct(m) {
     const [p, t] = Model.attCount(m);
     return t ? Math.round(p / t * 100) : 0;
@@ -288,10 +290,10 @@ class Sync {
 
   // ---------- načítání ----------
   /** Stránkované načtení celé tabulky (Supabase vrací max. 1000 řádků na dotaz). */
-  static async fetchAll(table, build) {
+  static async fetchAll(table, build, cols) {
     const out = [];
     for (let from = 0; ; from += 1000) {
-      const { data, error } = await build(sb.from(table).select('*')).range(from, from + 999);
+      const { data, error } = await build(sb.from(table).select(cols || '*')).range(from, from + 999);
       if (error) throw new Error(table + ': ' + error.message);
       out.push(...data);
       if (data.length < 1000) break;
@@ -356,7 +358,9 @@ class Sync {
       try { await sb.rpc('sync_plan_events', {week_start: a}); } catch (e) { console.warn('sync_plan_events', e); }   // tréninky vzniklé z rozvrhu hřišť (idempotentní)
       const ev = await Sync.fetchAll('events', q => q.gte('event_date', a).lte('event_date', b).order('id'));
       DB.events = ev.map(e => ({id: e.id, k: e.kind, tm: e.team, d: Util.dayIndex(e.event_date), t: e.time, pl: e.place, m: e.meet, c: e.coach, o: e.opponent || '', x: e.cancelled ? 1 : 0, nc: e.nom_closed ? 1 : 0,
-                                br: e.bring || '', tour: e.tour ? 1 : 0, rank: e.placement || '', sc: e.sub_coach || null}));
+                                br: e.bring || '', tour: e.tour ? 1 : 0, rank: e.placement || '', sc: e.sub_coach || null,
+                                mpl: e.meet_place || '', fin: e.finished ? 1 : 0, lu: Array.isArray(e.lineup) ? e.lineup : []}));
+      DB.events.forEach(e => { if (e.k == 'z') DB.zids.add(String(e.id)); });
       DB.cpool = {};                                                  // spolujízda se dočte znovu u zobrazených zápasů
     },
     /** Plány tréninků zobrazovaného týdne a šablony plánů (jen trenéři; ostatním databáze nic nevrátí) */
@@ -385,7 +389,9 @@ class Sync {
     },
     /** Docházka + omluvy + spolujízda → DB.att, DB.responses, DB.carpool */
     attendance: async () => {
-      const rows = await Sync.fetchAll('attendance', q => q.order('id'));
+      const [rows, z] = await Promise.all([Sync.fetchAll('attendance', q => q.order('id')), Sync.fetchAll('events', q => q.eq('kind', 'z').order('id'), 'id')]);
+      DB.zids = new Set(z.map(e => String(e.id)));                    // zápasy: jejich docházka se do procent tréninků nepočítá
+      DB.events.forEach(e => { if (e.k == 'z') DB.zids.add(String(e.id)); });
       DB.att = {}; DB.responses = {}; DB.carpool = {};
       rows.forEach(r => { const m = Model.byId(r.player_id); if (m) Sync.applyAtt(r, m); });
       OfflineQ.reapply();                                             // značky zapsané bez internetu, které ještě čekají na odeslání

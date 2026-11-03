@@ -1150,6 +1150,9 @@ alter table public.events add column if not exists tour         boolean not null
 alter table public.events add column if not exists placement    text not null default '';
 alter table public.events add column if not exists sub_coach    uuid references public.profiles(id) on delete set null;
 alter table public.events add column if not exists summary_sent boolean not null default false;
+alter table public.events add column if not exists meet_place   text not null default '';     -- místo srazu u zápasu (čas srazu je ve sloupci meet, např. 9:15)
+alter table public.events add column if not exists finished     boolean not null default false; -- zápas ukončen: trenér potvrdil docházku (a výsledek)
+alter table public.events add column if not exists lineup       jsonb not null default '[]';   -- kdo zápas hrál (jména) – vidí i rodiče, kteří docházku spoluhráčů nevidí
 create index if not exists events_sub_coach_idx on public.events(sub_coach);
 alter table public.results add column if not exists event_id bigint references public.events(id) on delete set null;   -- zápas / turnaj, ke kterému výsledek patří
 create index if not exists results_event_idx on public.results(event_id);
