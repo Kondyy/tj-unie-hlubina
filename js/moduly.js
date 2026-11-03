@@ -72,7 +72,7 @@ class Calendar {
     const k = UI.kid + '|' + e.id, r = DB.responses[k], cl = e.x ? 'x' : e.k;
     return `<div class="card ev ${cl}">
       <div class="pay"><b>${e.k == 'z' ? (e.tour ? '🏅 Turnaj: ' : '🏆 Zápas vs. ') + esc(e.o) : '⚽ Trénink'}</b><span class="pill ${cl}">${e.x ? 'Zrušeno' : e.k == 'z' ? (e.tour ? 'Turnaj' : 'Zápas') : 'Trénink'}</span></div>
-      ${e.k == 'z' && e.m ? `<div class="srz" style="margin-top:4px">🤝 Sraz <b>${esc(e.m)}</b>${Events.meetNote(e) ? ` <span class="mut">(${esc(Events.meetNote(e))})</span>` : ''}</div>
+      ${e.k == 'z' && e.m ? `<div class="mut srz" style="margin-top:4px">🤝 Sraz <b>${esc(e.m)}</b>${Events.meetNote(e) ? ` <span class="mut">(${esc(Events.meetNote(e))})</span>` : ''}</div>
       <div class="mut">🕒 ${Util.date(e.d)} · výkop ${esc(e.t)} · 📍 ${esc(e.pl)} · 👤 ${esc(Model.coachSurnames(e))}</div>`
       : `<div class="mut">🕒 ${Util.date(e.d)}, ${Util.timeRange(e)} · 📍 ${esc(e.pl)}<br>${e.m ? `🤝 Sraz: ${Events.meet(e)} · ` : ''}👤 ${esc(Model.coachSurnames(e))}</div>`}
       ${Weather.line(e)}
