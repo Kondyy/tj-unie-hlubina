@@ -6,6 +6,21 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 3. 11. 2026 (sraz a výsledek zápasu)
+
+Zápas má čas srazu a po zápase se ukončí: trenér potvrdí docházku nominovaných a okno zápasu se změní na výsledek.
+
+**Potřeba udělat v Supabase:** spustit celý `schema.sql` (přidá u zápasů sloupce `meet_place`, `finished` a `lineup`). Dokud se nespustí, nepůjde přidat zápas ani ho ukončit.
+
+- **Sraz:** u nového zápasu trenér napíše čas výkopu a klepne, kolik minut předem je sraz (30 / 45 / 60 / 90 min). Čas srazu se doplní sám, jde ho přepsat ručně a lze přidat místo srazu (např. u šaten). V detailu zápasu je tlačítko **✏ Změnit výkop a sraz**; při změně výkopu se sraz přepočítá. Rodiče vidí sraz v kalendáři i na kartě nejbližší akce.
+- **🏁 Ukončit zápas** (nahrazuje tlačítko „Výsledek“): mřížka fotek jen s nominovanými hráči (bez nominace celá kategorie), klepnutím Přítomen → Omluven → Neomluven jako u tréninku. Předvyplněno je „Přítomen“, u omluvených „Omluven“. Jde přidat i hráče mimo nominaci. Pak skóre (tlačítka − / +), doma/venku a střelci (jen z přítomných).
+- Po uložení se okno zápasu změní na **výsledek**: skóre s označením Výhra / Remíza / Prohra, střelci, kdo hrál, kdo chyběl (vidí jen trenér) a trenéři. Trenér může výsledek i docházku opravit tlačítkem **✏ Upravit výsledek nebo docházku**; hráčům se přičte jen rozdíl.
+- Rodič místo tlačítek „Zúčastní se / Omluvit se“ uvidí u odehraného zápasu výsledek a jestli dítě hrálo a kolik dalo gólů. Klepnutím se otevře celé okno výsledku.
+- Odehraný zápas se přičte hráčům, kteří byli přítomni (dřív všem nominovaným). U turnaje se odehraný zápas přičte jednou při ukončení turnaje, ne za každé utkání.
+- Docházka ze zápasů se ukládá zvlášť a **do procent docházky na tréninky se nepočítá**.
+
+---
+
 ## 3. 11. 2026 (čas tréninku od–do, plánovač do 20:00)
 
 Trenér u tréninku zadává čas **od – do** a plánovač hřiště pokrývá **15:00–20:00**.

@@ -41,7 +41,7 @@ class App {
         ? `<div class="col"><div class="card"><b>Zatím nemáte přiřazené dítě</b><div class="mut" style="margin-top:6px">Správce klubu vám k účtu přiřadí vaše dítě. Potom se tu objeví kalendář, chat a platby.</div></div></div>`
         : TABS[u.r].find(t => t.id == UI.tab).view();                 // nejdřív obsah (označí zprávy jako přečtené)
       const list = Notifs.list(u), unread = list.filter(([n]) => !Notifs.isRead(n, u)).length;
-      root.innerHTML = `${App.header(u, list, unread)}<main class="wrap">${noKid ? '' : App.tabBar(u)}${Offline.banner()}${body}</main>${UI.modal ? Calendar.excuseModal() : ''}${UI.profile || Profile.forced(u) ? Profile.modal() : (!u.consent ? Profile.consentModal() : '')}`;
+      root.innerHTML = `${App.header(u, list, unread)}<main class="wrap">${noKid ? '' : App.tabBar(u)}${Offline.banner()}${body}</main>${UI.modal ? Calendar.excuseModal() : ''}${UI.resView ? Calendar.resultModal() : ''}${UI.profile || Profile.forced(u) ? Profile.modal() : (!u.consent ? Profile.consentModal() : '')}`;
     }
     if (UI.toast) root.insertAdjacentHTML('beforeend', `<div class="toast ${UI.toastOk ? 'good' : ''}" role="status">${esc(UI.toast)}</div>`);
     App.restore(root, keep);

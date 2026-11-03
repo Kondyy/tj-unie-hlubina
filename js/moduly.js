@@ -68,10 +68,11 @@ class Calendar {
 
   /** Karta jedné události (trénink / zápas / zrušeno) s tlačítky účasti. */
   static eventCard(e) {
+    if (e.k == 'z' && e.fin && !e.x) return Calendar.finishedCard(e);                  // ukončený zápas: místo tlačítek výsledek
     const k = UI.kid + '|' + e.id, r = DB.responses[k], cl = e.x ? 'x' : e.k;
     return `<div class="card ev ${cl}">
       <div class="pay"><b>${e.k == 'z' ? (e.tour ? '🏅 Turnaj: ' : '🏆 Zápas vs. ') + esc(e.o) : '⚽ Trénink'}</b><span class="pill ${cl}">${e.x ? 'Zrušeno' : e.k == 'z' ? (e.tour ? 'Turnaj' : 'Zápas') : 'Trénink'}</span></div>
-      <div class="mut">🕒 ${Util.date(e.d)}, ${Util.timeRange(e)} · 📍 ${esc(e.pl)}<br>🤝 Sraz: ${esc(e.m)} · 👤 ${esc(Model.coachSurnames(e))}</div>
+      <div class="mut">🕒 ${Util.date(e.d)}, ${Util.timeRange(e)} · 📍 ${esc(e.pl)}<br>${e.m ? `${e.k == 'z' ? '<b>' : ''}🤝 Sraz: ${Events.meet(e)}${e.k == 'z' ? '</b>' : ''} · ` : ''}👤 ${esc(Model.coachSurnames(e))}</div>
       ${Weather.line(e)}
       ${e.x ? '' : Calendar.nomState(e)}
       ${e.x || Calendar.notNominated(e) ? '' : `<div class="row" style="margin-top:10px">
@@ -82,6 +83,25 @@ class Calendar {
       ${e.x ? '' : Bring.parent(e) + Carpool.list(e) + (e.tour ? Tour.summary(e) : '')}
       ${e.x || e.k != 'z' ? '' : `<div class="row" style="margin-top:8px"><a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(Venues.target(e.pl))}">🧭 Navigovat</a></div>`}
     </div>`;
+  }
+
+  /** Karta ukončeného zápasu: výsledek a jestli dítě hrálo a dalo gól. Klepnutím se otevře celé okno výsledku. */
+  static finishedCard(e) {
+    const r = Events.result(e), played = (e.lu || []).includes(UI.kid), g = r ? (r.g || {})[UI.kid] || 0 : Tour.stats(Tour.games(e)).sc[UI.kid] || 0;
+    const c = r ? (r.s[0] > r.s[1] ? ['ok', 'Výhra'] : r.s[0] == r.s[1] ? ['wa', 'Remíza'] : ['no', 'Prohra']) : ['ok', 'Turnaj'];
+    return `<div class="card ev ${c[0]}" style="cursor:pointer" onclick="Calendar.openResult(${e.id})">
+      <div class="pay"><b>🏁 ${r ? c[1] + ' ' + Events.score(r) + ' vs. ' : 'Turnaj '}${esc(e.o)}</b><span class="pill ${c[0]}">Odehráno</span></div>
+      <div class="mut">${Util.date(e.d)} · ${esc(e.pl)}${r ? ' · ' + (r.h ? 'doma' : 'venku') : ''}${e.rank ? ' · ' + esc(e.rank) + '. místo' : ''}</div>
+      <div style="margin-top:6px">${esc(UI.kid)} ${played ? 'hrál(a)' + (g ? ` a dal(a) <b>${g} ${g == 1 ? 'gól' : g < 5 ? 'góly' : 'gólů'}</b> ⚽` : '') : 'tentokrát nehrál(a)'}</div>
+      <div class="mut" style="margin-top:4px">Klepnutím otevřete celý výsledek →</div></div>`;
+  }
+  static openResult(id) { UI.resView = id; App.render(); }
+  static closeResult()  { UI.resView = 0; App.render(); }
+  /** Okno s výsledkem zápasu pro rodiče (stejné jako u trenéra, jen bez úprav a bez absencí spoluhráčů). */
+  static resultModal() {
+    const e = Model.event(UI.resView); if (!e) return '';
+    return `<div class="mo" onclick="if(event.target==this)Calendar.closeResult()"><div class="card rvm">${Events.resultView(e, false)}
+      <button class="btn" style="width:100%;margin-top:10px" onclick="Calendar.closeResult()">Zavřít</button></div></div>`;
   }
 
   /** Zápas s uzavřenou nominací, na kterou dítě nebylo nominováno. */
@@ -424,39 +444,214 @@ class Events {
     if (!e) {
       UI.matchEvent = 0;
       return `<h2 style="margin-top:0">Zápasy ${esc(team)}</h2><div class="g2">${list.map(m => {
-        const res = DB.results.find(r => r.eid == m.id || (!r.eid && r.tm == m.tm && r.o == m.o)), noms = (DB.nominations[m.id] || []).length;
+        const res = Events.result(m), noms = (DB.nominations[m.id] || []).length;
         return `<div class="card ev ${m.x ? 'x' : 'z'}" style="cursor:pointer" onclick="Events.openMatch('${m.id}')">
-          <div class="pay"><b>${m.tour ? '🏅 Turnaj: ' : '🏆 vs. '}${esc(m.o)}</b><span class="pill ${m.x ? 'x' : 'z'}">${m.x ? 'Zrušeno' : Util.date(m.d)}</span></div>
-          <div class="mut">${esc(m.t)} · 📍 ${esc(m.pl)}</div>
-          <div class="mut">${m.tour ? (Tour.games(m).length ? '🏁 ' + Tour.games(m).length + ' utkání' + (m.rank ? ' · ' + esc(m.rank) + '. místo' : '') : 'Klepnutím otevřete turnaj →') : res ? '🏁 ' + res.s[0] + ':' + res.s[1] : noms ? (m.nc ? '🔒 Nominace uzavřena' : 'Nominace rozpracována') + ' · ' + noms + ' hráčů · ' + Events.confirmSummary(m) : 'Klepnutím otevřete zápas →'}</div></div>`;
+          <div class="pay"><b>${m.tour ? '🏅 Turnaj: ' : '🏆 vs. '}${esc(m.o)}</b><span class="pill ${m.x ? 'x' : m.fin ? 'ok' : 'z'}">${m.x ? 'Zrušeno' : m.fin ? 'Odehráno' : Util.date(m.d)}</span></div>
+          <div class="mut">${esc(m.t)}${m.m ? ' · 🤝 sraz ' + esc(m.m) : ''} · 📍 ${esc(m.pl)}</div>
+          <div class="mut">${m.fin ? '🏁 ' + (res ? Events.score(res) + ' · ' : '') + 'ukončeno · hrálo ' + m.lu.length + ' hráčů'
+            : m.tour ? (Tour.games(m).length ? '🏁 ' + Tour.games(m).length + ' utkání' + (m.rank ? ' · ' + esc(m.rank) + '. místo' : '') : 'Klepnutím otevřete turnaj →') : res ? '🏁 ' + Events.score(res) : noms ? (m.nc ? '🔒 Nominace uzavřena' : 'Nominace rozpracována') + ' · ' + noms + ' hráčů · ' + Events.confirmSummary(m) : 'Klepnutím otevřete zápas →'}</div></div>`;
       }).join('') || Look.empty('trophy', 'Zatím žádné zápasy', 'Tento týden zatím žádný zápas. Přidejte ho formulářem níže.')}</div>${Events.form()}`;
     }
+    if (UI.closeEvent == e.id && UI.cl) return Events.closeView(e);                     // ukončení zápasu: docházka + výsledek
+    if (e.fin && !e.x) return `<button class="btn" onclick="Events.closeMatch()">← Zápasy</button>${Events.resultView(e, true)}`;   // ukončený zápas = výsledek
+    const note = Events.meetNote(e);
     return `<button class="btn" onclick="Events.closeMatch()">← Zápasy</button>
       <h2>${e.tour ? '🏅 Turnaj: ' : '🏆 vs. '}${esc(e.o)} · ${Util.date(e.d)} · ${esc(e.t)}</h2>
       <div class="card ev ${e.x ? 'x' : e.k}"><div class="pay"><b>📍 ${esc(e.pl)} · ${e.tour ? 'turnaj ' : 'vs. '}${esc(e.o)}</b><span class="pill ${e.x ? 'x' : 'z'}">${e.x ? 'Zrušeno' : e.tour ? 'Turnaj' : 'Zápas'}</span></div>
+        <div class="pay" style="margin-top:8px"><span>🕒 Výkop <b>${esc(e.t)}</b></span><span>🤝 Sraz <b>${e.m ? esc(e.m) : '—'}</b></span></div>
+        ${note ? `<div class="mut">${esc(note)}</div>` : ''}
+        ${e.x ? '' : UI.meetEdit == e.id ? Events.meetBox(e) : `<button class="btn" style="width:100%;margin-top:6px" onclick="Events.toggleMeet(${e.id})">✏ Změnit výkop a sraz</button>`}
         ${Weather.line(e)}${Venues.placeBox(e)}
         <div class="row" style="margin-top:8px">
           ${!e.x ? `<button class="btn" onclick="Events.toggleNomination('${e.id}')">${e.nc ? '🔒 ' : ''}Nominace (${(DB.nominations[e.id] || []).length})</button>` : ''}
-          ${!e.x && !e.tour ? `<button class="btn" onclick="Events.toggleResult('${e.id}')">🏁 Výsledek</button>` : ''}
           ${Events.notifyBtn(e)}
           <button class="btn" onclick="Events.cancel(${e.id})">${e.x ? 'Obnovit' : 'Zrušit'}</button><button class="btn" style="flex:none;color:var(--r)" onclick="Events.remove(${e.id})">🗑 Smazat</button></div>
         ${e.x ? '' : Attendance.coachCard(e, true)}${UI.nomEvent == e.id ? Events.nominationBox(e) : ''}${UI.resEvent == e.id ? Events.resultBox(e) : ''}
         ${e.x ? '' : Carpool.list(e)}</div>
       ${e.x || !e.tour ? '' : Tour.box(e)}${ResultImg.forEvent(e)}
-      ${e.x ? '' : Events.confirmBox(e) + Bring.coach(e) + SubCoach.card(e)}`;
+      ${e.x ? '' : Events.confirmBox(e) + Bring.coach(e) + SubCoach.card(e)}
+      ${e.x ? '' : `<button class="btn ok" style="width:100%;margin-top:10px" onclick="Events.startClose(${e.id})">🏁 Ukončit ${e.tour ? 'turnaj' : 'zápas'}</button>
+        <div class="mut" style="margin-top:6px">Po zápase potvrdíte, kdo přišel${e.tour ? '' : ', a zapíšete skóre se střelci'}. Okno zápasu se pak změní na výsledek.</div>`}`;
   }
-  static openMatch(id) { UI.matchEvent = id; UI.nomEvent = 0; UI.resEvent = 0; App.render(); }
-  static closeMatch()  { UI.matchEvent = 0; UI.nomEvent = 0; UI.resEvent = 0; App.render(); }
+  static openMatch(id) { UI.matchEvent = id; UI.nomEvent = 0; UI.resEvent = 0; UI.meetEdit = 0; UI.closeEvent = 0; UI.cl = null; App.render(); }
+  static closeMatch()  { UI.matchEvent = 0; UI.nomEvent = 0; UI.resEvent = 0; UI.meetEdit = 0; UI.closeEvent = 0; UI.cl = null; App.render(); }
 
   /** Formulář "+ Přidat zápas". */
   static form() {
     return `<h2>+ Přidat zápas</h2><div class="card">
       <div class="row"><select id="ev-day">${CONFIG.days.map((n, i) => `<option value="${i}">${Util.date(i)}</option>`).join('')}</select></div>
       ${Venues.select('ev-place')}
-      <input id="ev-time" placeholder="Čas (16:00)"><input id="ev-opp" placeholder="Soupeř (u turnaje název turnaje)">
+      <input id="ev-time" placeholder="Výkop (např. 10:00)" inputmode="numeric" oninput="Events.kickoffChanged('ev')"><input id="ev-opp" placeholder="Soupeř (u turnaje název turnaje)">
+      ${Events.meetFields('ev')}
       <label class="pl"><span>🏅 Turnaj (víc utkání v jeden den)</span><input id="ev-tour" type="checkbox"></label>
       <label class="pl"><span>🔔 Upozornit rodiče na nový zápas</span><input id="ev-notify" type="checkbox"></label>
       <button class="btn ok" style="width:100%" onclick="Events.add('z')">Přidat zápas</button></div>`;
+  }
+
+  /* ----- sraz: trenér zadá výkop, klepne „kolik minut předem“ a čas srazu se doplní sám ----- */
+  static OFFS = [30, 45, 60, 90];
+  /** "10:00" → minuty od půlnoci (NaN, když to není platný čas). */
+  static mins(t) { const m = /^(\d{1,2})[:.](\d{2})$/.exec(String(t || '').trim()); return m && +m[1] < 24 && +m[2] < 60 ? +m[1] * 60 + +m[2] : NaN; }
+  static hm(x) { x = (x % 1440 + 1440) % 1440; return Math.floor(x / 60) + ':' + String(x % 60).padStart(2, '0'); }
+  /** „45 min předem · u šaten“ (jen když je sraz zadaný časem). */
+  static meetNote(e) {
+    const off = Events.mins(e.t) - Events.mins(e.m);
+    return [off > 0 ? off + ' min předem' : '', e.mpl || ''].filter(Boolean).join(' · ');
+  }
+  /** Sraz pro rodiče: „9:15 (45 min předem · u šaten)“; starší zápisy („15 min předem“) se ukážou, jak jsou. */
+  static meet(e) { const n = Events.meetNote(e); return esc(e.m) + (n ? ' (' + esc(n) + ')' : ''); }
+  /** Tlačítka „30 / 45 / 60 / 90 min“ + čas a místo srazu (pf = předpona id polí, výkop je v #pf-time). */
+  static meetFields(pf, e) {
+    const off = e ? Events.mins(e.t) - Events.mins(e.m) : NaN;
+    return `<div style="margin-top:8px"><div class="mut">🤝 Sraz – kolik minut před výkopem?</div>
+      <div class="row" id="${pf}-chips" style="margin-top:4px">${Events.OFFS.map(n => `<button type="button" class="chip ${off == n ? 'on' : ''}" data-min="${n}" onclick="Events.pickMeet('${pf}',${n})">${n} min</button>`).join('')}</div>
+      <input id="${pf}-meet" placeholder="Čas srazu (doplní se sám)" inputmode="numeric" value="${e && !isNaN(Events.mins(e.m)) ? esc(e.m) : ''}" oninput="Events.meetTyped('${pf}')" style="margin-top:6px">
+      <input id="${pf}-meetpl" placeholder="Místo srazu (nepovinné, např. u šaten)" maxlength="60" value="${esc(e ? e.mpl : '')}"></div>`;
+  }
+  static pickMeet(pf, n, quiet) {
+    const t = Events.mins($('#' + pf + '-time').value);
+    if (isNaN(t)) return quiet ? null : alert('Nejdřív napište čas výkopu (např. 10:00).');
+    $('#' + pf + '-meet').value = Events.hm(t - n);
+    document.querySelectorAll('#' + pf + '-chips .chip').forEach(c => c.classList.toggle('on', +c.dataset.min == n));
+  }
+  /** Změna výkopu přepočítá sraz podle vybraného tlačítka. */
+  static kickoffChanged(pf) { const on = document.querySelector('#' + pf + '-chips .chip.on'); if (on) Events.pickMeet(pf, +on.dataset.min, true); }
+  /** Ručně přepsaný čas srazu: tlačítko „X min“ už neplatí. */
+  static meetTyped(pf) { document.querySelectorAll('#' + pf + '-chips .chip').forEach(c => c.classList.remove('on')); }
+  /** {m: '9:15', mpl: 'u šaten'} z formuláře, nebo null při chybě. */
+  static readMeet(pf) {
+    const raw = $('#' + pf + '-meet').value.trim(), mpl = $('#' + pf + '-meetpl').value.trim().slice(0, 60), x = Events.mins(raw);
+    if (raw && isNaN(x)) { alert('Čas srazu napište jako 9:15 (nebo klepněte na „45 min“).'); return null; }
+    return {m: raw ? Events.hm(x) : '', mpl};
+  }
+  /** Úprava výkopu a srazu v detailu zápasu. */
+  static toggleMeet(id) { UI.meetEdit = UI.meetEdit == id ? 0 : id; App.render(); }
+  static meetBox(e) {
+    return `<div style="margin-top:8px;border-top:1px solid var(--bd);padding-top:8px">
+      <label class="mut">Výkop<input id="me-time" value="${esc(e.t)}" inputmode="numeric" oninput="Events.kickoffChanged('me')"></label>
+      ${Events.meetFields('me', e)}
+      <label class="pl"><span>🔔 Upozornit rodiče na změnu</span><input id="me-notify" type="checkbox"></label>
+      <div class="row" style="margin-top:8px"><button class="btn" onclick="Events.toggleMeet(${e.id})">Zrušit</button><button class="btn ok" onclick="Events.saveMeet(${e.id})">Uložit</button></div></div>`;
+  }
+  static async saveMeet(id) {
+    const e = Model.event(id), x = Events.mins($('#me-time').value), mt = Events.readMeet('me'), tell = $('#me-notify').checked;
+    if (isNaN(x)) return alert('Čas výkopu napište jako 10:00.');
+    if (!mt) return;
+    const t = Events.hm(x);
+    if (!await Sync.write('Sraz se nepodařilo uložit', sb.from('events').update({time: t, meet: mt.m, meet_place: mt.mpl}).eq('id', +id))) return;
+    Object.assign(e, {t, m: mt.m, mpl: mt.mpl}); UI.meetEdit = 0;
+    if (tell) Notifs.send('P', `🤝 Zápas vs. ${e.o} ${Util.date(e.d)} (${e.tm}): výkop ${t}${mt.m ? ', sraz ' + mt.m + (mt.mpl ? ' ' + mt.mpl : '') : ''}`, {team: e.tm, tab: 'cal'});
+    Sync.toast('✔ Uloženo.', true); App.render();
+  }
+
+  /* ----- ukončení zápasu: docházka nominovaných (jako u tréninku) + výsledek, potom se okno zápasu změní na výsledek ----- */
+  /** Výsledek zápasu (u turnaje null – utkání turnaje jsou v Tour). */
+  static result(e) { return e.tour ? null : DB.results.find(r => r.eid == e.id || (!r.eid && r.tm == e.tm && r.o == e.o)) || null; }
+  static score(r) { return r.h ? r.s[0] + ':' + r.s[1] : r.s[1] + ':' + r.s[0]; }
+  /** Hráči k potvrzení: nominovaní (bez nominace celá kategorie) + kdo už má u zápasu značku. */
+  static closeList(e) {
+    const noms = DB.nominations[e.id] || [], team = Model.membersOf(e.tm).map(m => m.n);
+    return [...new Set([...(noms.length ? noms : team), ...team.filter(n => DB.att[e.id + '|' + n])])].filter(n => Model.member(n));
+  }
+  /** Otevře ukončení (nebo opravu) zápasu. Předvyplní: dřívější značky, jinak omluvení „Omluven“ a ostatní „Přítomen“. */
+  static startClose(id) {
+    const e = Model.event(id), res = Events.result(e), att = {};
+    Events.closeList(e).forEach(n => att[n] = DB.att[e.id + '|' + n] || ((DB.responses[n + '|' + e.id] || {}).s == 'n' ? 'O' : 'P'));
+    UI.cl = {id: e.id, att, us: res ? res.s[0] : 0, them: res ? res.s[1] : 0, home: res ? res.h : 1, g: res ? {...res.g} : {}, more: false, notify: !e.fin};
+    UI.closeEvent = e.id; UI.meetEdit = 0; UI.nomEvent = 0; UI.resEvent = ''; App.render();
+  }
+  static cancelClose() { UI.closeEvent = 0; UI.cl = null; App.render(); }
+  static closeView(e) {
+    const c = UI.cl, names = Object.keys(c.att), here = names.filter(n => c.att[n] == 'P'), others = Model.membersOf(e.tm).filter(m => !(m.n in c.att));
+    const ans = {ok: '✔', no: '✖', wa: '⏳'}, noms = (DB.nominations[e.id] || []).length;
+    return `<button class="btn" onclick="Events.cancelClose()">← Zpět na zápas</button>
+      <h2>🏁 ${e.fin ? 'Upravit' : 'Ukončit'} ${e.tour ? 'turnaj ' : 'zápas vs. '}${esc(e.o)}</h2>
+      <div class="card"><div class="pay"><b>1 · Kdo přišel</b><span class="pill ok">${here.length} / ${names.length} přítomno</span></div>
+        <div class="mut" style="margin:4px 0 10px">${noms ? 'Nominovaní hráči.' : 'Nominace nebyla, proto je tu celá kategorie.'} Klepnutím na fotku: Přítomen → Omluven → Neomluven. Vlevo nahoře je odpověď rodiče.</div>
+        <div class="pg">${names.map(n => { const m = Model.member(n), a = c.att[n], an = Events.answer(n, e.id);
+          return `<button class="pt ${a}" onclick="Events.closeTap('${Util.q(n)}')" aria-label="${esc(m.full || n)}: ${CONFIG.attStates.find(s => s[0] == a)[1]}">${Util.avatar(m, 104)}<span class="an ${an[0]}">${ans[an[0]]}</span><span class="st">${a}</span><span class="nm">${esc(m.full || n)}</span></button>`; }).join('')}</div>
+        ${!others.length ? '' : c.more ? `<div class="mut" style="margin-top:10px">Klepnutím přidáte hráče, který přišel navíc:</div>
+            <div class="row" style="margin-top:6px">${others.map(m => `<button class="chip" style="flex:none" onclick="Events.closeAdd('${Util.q(m.n)}')">+ ${esc(m.full || m.n)}</button>`).join('')}</div>`
+          : `<button class="btn" style="width:100%;margin-top:10px" onclick="UI.cl.more=true;App.render()">+ Přidat hráče mimo nominaci</button>`}</div>
+      ${e.tour ? '<div class="card"><b>2 · Výsledky turnaje</b><div class="mut" style="margin-top:4px">Jednotlivá utkání a umístění zapisujete v okně turnaje, i po jeho ukončení.</div></div>' : Events.closeScore(e)}
+      <label class="pl"><span>🔔 Poslat rodičům ${e.tour ? 'upozornění' : 'výsledek'}</span><input type="checkbox" ${c.notify ? 'checked' : ''} onchange="UI.cl.notify=this.checked"></label>
+      <div class="row" style="margin-top:10px"><button class="btn" onclick="Events.cancelClose()">Zpět</button><button class="btn ok" onclick="Events.saveClose()">✔ Uložit${e.fin ? '' : ' a ukončit'}</button></div>
+      <div class="mut" style="margin-top:8px">Přítomným se přičte odehraný zápas${e.tour ? '' : ' a góly'}. Docházka ze zápasů se do procent docházky na tréninky nepočítá.</div>`;
+  }
+  /** Skóre a střelci (střelce jde vybrat jen z přítomných). */
+  static closeScore(e) {
+    const c = UI.cl, here = Object.keys(c.att).filter(n => c.att[n] == 'P');
+    const step = (on, v, lbl) => `<div class="stp"><button class="btn" onclick="${on},-1)" aria-label="Ubrat ${lbl}">−</button><output>${v}</output><button class="btn" onclick="${on},1)" aria-label="Přidat ${lbl}">+</button></div>`;
+    return `<div class="card"><b>2 · Výsledek</b>
+      <div class="row" style="margin-top:8px"><div><div class="mut">Naše góly</div>${step("Events.closeStep('us'", c.us, 'náš gól')}</div><div><div class="mut">Soupeř</div>${step("Events.closeStep('them'", c.them, 'gól soupeře')}</div></div>
+      <label class="mut">Hráno<select onchange="UI.cl.home=+this.value"><option value="1" ${c.home ? 'selected' : ''}>doma</option><option value="0" ${c.home ? '' : 'selected'}>venku</option></select></label>
+      <div class="mut" style="margin-top:10px">Střelci (jen přítomní hráči):</div>
+      ${here.map(n => `<div class="pay" style="margin-top:4px"><span>${esc(Model.member(n).full || n)}</span>${step(`Events.closeGoal('${Util.q(n)}'`, c.g[n] || 0, 'gól')}</div>`).join('') || '<div class="mut">Nikdo není označen jako přítomen.</div>'}</div>`;
+  }
+  static closeTap(n) { const c = UI.cl; c.att[n] = {P: 'O', O: 'N', N: 'P'}[c.att[n]] || 'P'; if (c.att[n] != 'P') delete c.g[n]; Look.tap(); App.render(); }
+  static closeAdd(n) { UI.cl.att[n] = 'P'; App.render(); }
+  static goals(c) { return Object.values(c.g).reduce((a, b) => a + b, 0); }
+  static closeStep(k, d) {
+    const c = UI.cl;
+    if (k == 'us' && d < 0 && Events.goals(c) > c.us - 1) return Sync.toast('Nejdřív uberte gól střelci.');
+    c[k] = Math.max(0, c[k] + d); App.render();
+  }
+  static closeGoal(n, d) {
+    const c = UI.cl;
+    if (d > 0 && Events.goals(c) >= c.us) return Sync.toast('Střelců nemůže být víc než gólů týmu – nejdřív zvyšte skóre.');
+    c.g[n] = Math.max(0, (c.g[n] || 0) + d); if (!c.g[n]) delete c.g[n]; App.render();
+  }
+  /** Uloží docházku, výsledek a ukončení. Hráčům se přičtou odehrané zápasy a góly (při opravě jen rozdíl). */
+  static async saveClose() {
+    const c = UI.cl, e = Model.event(c.id); if (!e) return;
+    const names = Object.keys(c.att), here = names.filter(n => c.att[n] == 'P'), res = Events.result(e);
+    const oldHere = e.fin ? e.lu : res ? (DB.nominations[e.id] || []) : [], oldG = res ? res.g : {};   // dřív zapsaný výsledek (starý způsob) už nominovaným zápas přičetl
+    const gone = Model.membersOf(e.tm).filter(m => !(m.n in c.att) && DB.att[e.id + '|' + m.n]);
+    const rows = names.map(n => ({event_id: +e.id, player_id: Model.member(n).id, state: c.att[n]})).concat(gone.map(m => ({event_id: +e.id, player_id: m.id, state: null})));
+    if (!await Sync.write('Docházku se nepodařilo uložit', sb.from('attendance').upsert(rows, {onConflict: 'event_id,player_id'}))) return;
+    names.forEach(n => DB.att[e.id + '|' + n] = c.att[n]); gone.forEach(m => delete DB.att[e.id + '|' + m.n]);
+    if (!e.tour) {
+      const date = Util.iso(Util.dayDate(e.d)), row = {team: e.tm, played_on: date, opponent: e.o, home: !!c.home, score_us: c.us, score_them: c.them, scorers: c.g, event_id: e.id};
+      const r = await Sync.write('Výsledek se nepodařilo uložit', (res ? sb.from('results').update(row).eq('id', res.id) : sb.from('results').insert(row)).select().single());
+      if (!r) return;
+      const nr = {id: r.data.id, eid: e.id, tm: e.tm, d: Util.short(date), o: e.o, h: c.home ? 1 : 0, s: [c.us, c.them], g: {...c.g}};
+      if (res) Object.assign(res, nr); else DB.results.unshift(nr);
+    }
+    if (!await Sync.write('Zápas se nepodařilo ukončit', sb.from('events').update({finished: true, lineup: here}).eq('id', +e.id))) return;
+    const dm = {}, dg = {}, add = (o, n, v) => o[n] = (o[n] || 0) + v;
+    here.forEach(n => add(dm, n, 1)); oldHere.forEach(n => add(dm, n, -1));
+    if (!e.tour) { Object.entries(c.g).forEach(([n, g]) => add(dg, n, g)); Object.entries(oldG).forEach(([n, g]) => add(dg, n, -g)); }
+    new Set([...Object.keys(dm), ...Object.keys(dg)]).forEach(n => {
+      const m = Model.member(n); if (!m || !(dm[n] || dg[n])) return;
+      m.mp = Math.max(0, m.mp + (dm[n] || 0)); m.gl = Math.max(0, m.gl + (dg[n] || 0)); Sync.savePlayer(m.id, true);
+    });
+    const first = !e.fin; e.fin = 1; e.lu = here;
+    if (c.notify) Notifs.send('P', e.tour ? `🏅 Turnaj ${e.o} (${e.tm}) je odehraný – výsledky najdete v aplikaci` : `🏁 Výsledek ${e.tm}: ${c.home ? CLUB + ' ' + c.us + ':' + c.them + ' ' + e.o : e.o + ' ' + c.them + ':' + c.us + ' ' + CLUB}`, {team: e.tm, tab: 'cal'});
+    UI.closeEvent = 0; UI.cl = null; Sync.toast(first ? '✔ Zápas ukončen.' : '✔ Uloženo.', true); App.render();
+  }
+  /** Okno ukončeného zápasu: skóre, střelci, kdo hrál (a pro trenéra kdo chyběl). Ukazuje se trenérovi i rodičům. */
+  static resultView(e, coach) {
+    const r = Events.result(e), lu = e.lu || [], kid = UI.user.r == 'p' ? UI.kid : '';
+    const nm = n => esc((Model.member(n) || {}).full || n);
+    const sc = r ? Object.entries(r.g || {}).filter(([, g]) => g > 0).sort((a, b) => b[1] - a[1]) : [];
+    const tag = r ? (r.s[0] > r.s[1] ? ['ok', 'Výhra'] : r.s[0] == r.s[1] ? ['wa', 'Remíza'] : ['no', 'Prohra']) : e.rank ? ['ok', esc(e.rank) + '. místo'] : null;
+    const miss = coach ? Model.membersOf(e.tm).filter(m => DB.att[e.id + '|' + m.n] && DB.att[e.id + '|' + m.n] != 'P') : [];
+    const cnt = n => n + ' ' + (n == 1 ? 'hráč' : n > 1 && n < 5 ? 'hráči' : 'hráčů');
+    return `<div class="card dnes z rv">${tag ? `<span class="rtag ${tag[0]}">${tag[1]}</span>` : ''}
+        <div class="kind" style="padding-right:90px">🏁 ${e.tour ? 'Turnaj' : 'Konečný výsledek'} · ${Util.date(e.d)} · ${esc(e.pl)}</div>
+        ${r ? `<div class="score"><div class="tm">${esc(r.h ? CLUB : e.o)}</div><div class="sc">${Events.score(r)}</div><div class="tm">${esc(r.h ? e.o : CLUB)}</div></div>`
+            : `<div class="big" style="font-size:34px;margin:8px 0 4px">🏅 ${esc(e.o)}</div>`}
+        <div class="ln">🕒 Výkop ${esc(e.t)}${e.m ? ' · 🤝 sraz ' + esc(e.m) : ''}${r ? ' · ' + (r.h ? 'doma' : 'venku') : ''}</div></div>
+      ${e.tour ? `<div class="card">${Tour.summary(e) || '<div class="mut">Utkání turnaje zatím nejsou zapsaná.</div>'}</div>`
+        : `<div class="card"><b>⚽ Střelci</b>${sc.map(([n, g]) => `<div class="pay" style="margin-top:6px"><span>${nm(n)}${n == kid ? ' ⭐' : ''}</span><b>${'⚽'.repeat(Math.min(g, 5))} ${g}</b></div>`).join('') || '<div class="mut" style="margin-top:4px">Bez střelců</div>'}</div>`}
+      <div class="card"><div class="pay"><b>👟 Hráli</b><span class="pill ok">${cnt(lu.length)}</span></div>
+        <div class="avs">${lu.map(n => `<div class="${n == kid ? 'me' : ''}">${Util.avatar(Model.member(n) || {n, ph: ''}, 44)}<span>${esc(n)}</span></div>`).join('') || '<span class="mut">Docházka nebyla zapsaná.</span>'}</div>
+        ${miss.map(m => `<div class="pay" style="margin-top:6px"><span class="mut">${esc(m.full || m.n)}</span><span class="pill ${DB.att[e.id + '|' + m.n] == 'O' ? 'wa' : 'no'}">${DB.att[e.id + '|' + m.n] == 'O' ? 'Omluven' : 'Neomluven'}</span></div>`).join('')}</div>
+      <div class="card"><b>👤 Trenéři</b><div class="mut" style="margin-top:4px">${esc(Model.coachSurnames(e) || '—')}</div></div>
+      ${r ? ResultImg.btn(r) : ''}
+      ${coach ? `${e.tour ? Tour.box(e) + (UI.resEvent == e.id ? `<div class="card">${Events.resultBox(e)}</div>` : '') : ''}
+        <button class="btn" style="width:100%;margin-top:10px" onclick="Events.startClose(${e.id})">✏ Upravit ${e.tour ? 'docházku' : 'výsledek nebo docházku'}</button>
+        <button class="btn" style="width:100%;margin-top:8px;color:var(--r)" onclick="Events.remove(${e.id})">🗑 Smazat zápas</button>` : ''}`;
   }
 
   /** Seznam hráčů k nominaci na zápas. Po potvrzení je nominace uzavřená (jen k prohlížení), dokud ji trenér znovu neotevře. */
@@ -493,7 +688,7 @@ class Events {
       ${rows.map(r => `<div class="pay" style="margin-top:6px"><span>${esc(r.n)}</span><span class="pill ${r.a[0]}" style="max-width:62%;white-space:normal;text-align:right">${r.a[1]}</span></div>`).join('')}</div>`;
   }
 
-  /** Zápis výsledku zápasu: skóre + střelci. Rodiče kategorie dostanou upozornění, hráčům se přičtou góly a zápasy. */
+  /** Zápis jednoho utkání turnaje: skóre + střelci. Hráčům se přičtou góly (odehraný zápas se přičte při ukončení turnaje). */
   static toggleResult(id) { UI.resEvent = UI.resEvent == id ? '' : id; App.render(); }
   static resultBox(e) {
     const L = Model.membersOf(e.tm);
@@ -518,7 +713,6 @@ class Events {
     if (!r) return;
     DB.results.unshift({id: r.data.id, eid: e.id, tm: e.tm, d: Util.short(date), o: opp, h: home ? 1 : 0, s: [us, them], g: scorers});
     Object.entries(scorers).forEach(([n, g]) => { const m = Model.member(n); if (m) { m.gl += g; Sync.savePlayer(m.id, true); } });
-    (DB.nominations[id] || []).forEach(n => { const m = Model.member(n); if (m) { m.mp++; Sync.savePlayer(m.id, true); } });
     if ($('#rs-notify') && $('#rs-notify').checked) Notifs.send('P', `🏁 ${e.tour ? 'Turnaj ' + e.o + ' – ' : 'Výsledek '}${e.tm}: ${home ? CLUB + ' ' + us + ':' + them + ' ' + opp : opp + ' ' + them + ':' + us + ' ' + CLUB}`, {team: e.tm, tab: 'cal'});
     UI.resEvent = ''; App.render();
   }
@@ -555,7 +749,7 @@ class Events {
   /** Zruší / obnoví událost; při zrušení dostanou rodiče notifikaci. */
   /** Upozornění rodičům kategorie na akci (posílá se jen na výběr trenéra – nic automaticky). */
   static notifyParents(e, silent) {
-    Notifs.send('P', `📅 ${e.k == 'z' ? 'Zápas vs. ' + e.o : 'Trénink'} ${Util.date(e.d)} v ${Util.timeRange(e)} · ${e.pl} (${e.tm})`, {team: e.tm, tab: 'cal'});
+    Notifs.send('P', `📅 ${e.k == 'z' ? 'Zápas vs. ' + e.o : 'Trénink'} ${Util.date(e.d)} v ${Util.timeRange(e)}${e.k == 'z' && e.m ? ', sraz ' + e.m + (e.mpl ? ' ' + e.mpl : '') : ''} · ${e.pl} (${e.tm})`, {team: e.tm, tab: 'cal'});
     if (!silent) Sync.toast('✔ Rodiče kategorie ' + e.tm + ' upozorněni.', true);
   }
   /** Tlačítko „Upozornit rodiče“ u akce. */
@@ -595,15 +789,18 @@ class Events {
     if (place == '__new') return alert('Vyberte místo.');
     if (te && Util.toMin(te) <= Util.toMin(time)) return alert('Konec tréninku musí být později než začátek.');
     const tour = k == 'z' && !!($('#ev-tour') || {}).checked;
-    const row = {kind: k, team: u.team, event_date: Util.iso(Util.dayDate(d)), time, place, meet: '15 min předem', coach: u.name, opponent: o, tour};
+    const mt = k == 'z' ? Events.readMeet('ev') : {m: '15 min předem', mpl: ''}; if (!mt) return;
+    const row = {kind: k, team: u.team, event_date: Util.iso(Util.dayDate(d)), time, place, meet: mt.m, coach: u.name, opponent: o, tour};
+    if (k == 'z') row.meet_place = mt.mpl;
     const r = await Sync.write('Událost se nepodařilo přidat', Events.withEnd(row, te, x => sb.from('events').insert(x).select().single()));
     if (!r) return;
-    const ne = {id: r.data.id, k, tm: u.team, d, t: time, te, pl: place, m: '15 min předem', c: u.name, o, x: 0, br: '', tour: tour ? 1 : 0, rank: '', sc: null};
+    const ne = {id: r.data.id, k, tm: u.team, d, t: time, te, pl: place, m: mt.m, mpl: mt.mpl, c: u.name, o, x: 0, br: '', tour: tour ? 1 : 0, rank: '', sc: null, fin: 0, lu: []};
+    if (k == 'z') DB.zids.add(String(ne.id));
     if ($('#ev-tour')) $('#ev-tour').checked = false;
     DB.events.push(ne);
     if ($('#' + pf + '-notify').checked) Events.notifyParents(ne);                       // jen když to trenér zvolil
     $('#' + pf + '-notify').checked = false;
-    UI.skipKeep = [pf + '-time', 'tr-end', 'ev-opp'];
+    UI.skipKeep = [pf + '-time', 'tr-end', 'ev-opp', 'ev-meet', 'ev-meetpl'];
     App.render();
   }
   /** Uloží i konec tréninku; když databáze ještě nemá sloupec time_end (neproběhl schema.sql), uloží aspoň začátek. */

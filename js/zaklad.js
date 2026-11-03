@@ -103,7 +103,8 @@ const CONFIG = {
                     by = ročník narození, par = rodiče, al = alergie, lim = omezení,
                     tn = poznámka trenéra, mp = zápasy, gl = góly, ph = fotka (data URL)
      událost (event): id, k = 't' trénink / 'z' zápas, tm = tým, d = den týdne (0 = Po),
-                    t = čas, pl = místo, m = sraz, c = trenér, o = soupeř, x = 1 když je zrušeno
+                    t = čas (výkop), pl = místo, m = sraz (např. 9:15), mpl = místo srazu, c = trenér, o = soupeř, x = 1 když je zrušeno,
+                    fin = 1 když je zápas ukončen, lu = kdo zápas hrál (jména)
      notifikace: id, to/aud = komu, x = text, by = odesílatel, tab/sub/team/kid = kam se přejde,
                     rd = kdo už přečetl, c = počet sloučených zpráv
    ===================================================================== */
@@ -111,6 +112,7 @@ const DB = {
   users: {}, members: [], docs: {}, events: [], results: [], payItems: [], plan: [], messages: [],
   chats: {}, notifs: [], links: [], settings: {}, dm: [], dmContacts: [], tcoaches: [], aper: [], calTok: undefined, dmErr: '', pabs: {}, prefs: {},
   venues: [], eplans: {}, ttpl: [], tpls: [], cpool: {}, cpPeers: {}, subPl: null,   // doplňky v4 (místa, plány, šablony, spolujízda, zástup)
+  zids: new Set(),  // id všech zápasů (docházka na zápasech se nepočítá do procent tréninků)
   att: {},          // docházka:        "idUdálosti|jménoHráče"  → 'P' | 'O' | 'N'
   coachEv: {},      // druh a datum události u účasti trenéra: "idTrenéra|idUdálosti" → {k:'t', d:'2026-10-12'}
   coachNm: {},      // příjmení trenéra u jeho účasti: "idTrenéra|idUdálosti" → 'Kondaš'
@@ -143,6 +145,10 @@ const UI = {
   attEvent: 0,           // trenér: otevřený trénink v docházce (0 = seznam tréninků)
   matchEvent: 0,         // trenér: otevřený zápas (0 = seznam zápasů)
   nomEvent: 0,           // trenér: zápas s rozbalenou nominací
+  meetEdit: 0,           // trenér: zápas, u kterého se upravuje výkop a sraz
+  closeEvent: 0,         // trenér: zápas, který se právě ukončuje (docházka + výsledek)
+  cl: null,              // trenér: rozpracované ukončení zápasu {id, att:{jméno:'P'|'O'|'N'}, us, them, home, g:{jméno:góly}, more}
+  resView: 0,            // rodič: zápas, jehož výsledek je otevřený v okně
   noteTag: 'g',          // trenér: aktivní štítek poznámky
   payFilter: 'all',      // vedení/platby: all | dl (dlužníci) | ok
   teamFilter: 'all',     // vedení/platby: filtr týmu

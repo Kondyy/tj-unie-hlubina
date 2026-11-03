@@ -229,7 +229,7 @@ class Dnes {
   /** Nejbližší nezrušená akce (probíhající se ukazuje ještě 90 minut po začátku). */
   static next(list) {
     const from = Date.now() - 90 * 6e4;
-    return list.filter(e => !e.x && Dnes.at(e) >= from).sort((a, b) => Dnes.at(a) - Dnes.at(b))[0];
+    return list.filter(e => !e.x && !e.fin && Dnes.at(e) >= from).sort((a, b) => Dnes.at(a) - Dnes.at(b))[0];
   }
   static when(e) {
     const d = Dnes.at(e), t = new Date(); t.setHours(0, 0, 0, 0);
@@ -243,7 +243,7 @@ class Dnes {
       <div class="kind" style="margin-top:6px">${kind}</div>
       <div class="big">${esc(Util.timeRange(e))}</div>
       <div class="ln">📍 ${esc(e.pl)}</div>
-      ${e.m ? `<div class="ln">🤝 Sraz: ${esc(e.m)}</div>` : ''}
+      ${e.m ? `<div class="ln">🤝 Sraz: ${Events.meet(e)}</div>` : ''}
       <div class="cd" data-at="${+Dnes.at(e)}">${Dnes.parts(+Dnes.at(e))}</div></div>`;
   }
   /** Odpočet: dny/hod/min, v posledních 24 hodinách hod/min/s. */
