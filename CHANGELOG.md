@@ -6,6 +6,15 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 7. 11. 2026 (předpokládaný konec zápasu)
+
+- U **zápasů a turnajů** může trenér zadat **předpokládaný konec** (nepovinné) – při přidání zápasu i v detailu přes „✏ Změnit výkop, sraz a konec“.
+- Rodiče ho vidí u akce v kalendáři i na přehledu Dnes („výkop 10:00 · konec cca 12:00“). Konec se propíše i do odběru kalendáře v telefonu.
+
+**V Supabase:** nic (používá se už existující sloupec `time_end`).
+
+---
+
 ## 7. 11. 2026 (týden až od pondělí)
 
 - Týdenní přehled ukazuje **aktuální týden (Po–Ne) až do neděle**. Nový týden se přepne až v pondělí, takže o víkendu rodiče i trenéři vidí sobotní a nedělní akce (např. turnaj).
