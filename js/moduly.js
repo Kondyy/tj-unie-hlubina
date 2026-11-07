@@ -73,7 +73,7 @@ class Calendar {
     return `<div class="card ev ${cl}">
       <div class="pay"><b>${e.k == 'z' ? (e.tour ? '🏅 Turnaj: ' : '🏆 Zápas vs. ') + esc(e.o) : '⚽ Trénink'}</b><span class="pill ${cl}">${e.x ? 'Zrušeno' : e.k == 'z' ? (e.tour ? 'Turnaj' : 'Zápas') : 'Trénink'}</span></div>
       ${e.k == 'z' && e.m ? `<div class="mut srz" style="margin-top:4px">🤝 Sraz <b>${esc(e.m)}</b>${Events.meetNote(e) ? ` <span class="mut">(${esc(Events.meetNote(e))})</span>` : ''}</div>
-      <div class="mut">🕒 ${Util.date(e.d)} · výkop ${esc(e.t)} · 📍 ${esc(e.pl)} · 👤 ${esc(Model.coachSurnames(e))}</div>`
+      <div class="mut">🕒 ${Util.date(e.d)} · výkop ${esc(e.t)}${Events.endTxt(e)} · 📍 ${esc(e.pl)} · 👤 ${esc(Model.coachSurnames(e))}</div>`
       : `<div class="mut">🕒 ${Util.date(e.d)}, ${Util.timeRange(e)} · 📍 ${esc(e.pl)}<br>${e.m ? `🤝 Sraz: ${Events.meet(e)} · ` : ''}👤 ${esc(Model.coachSurnames(e))}</div>`}
       ${Weather.line(e)}
       ${e.x ? '' : Calendar.nomState(e)}
@@ -449,7 +449,7 @@ class Events {
         const res = Events.result(m), noms = (DB.nominations[m.id] || []).length;
         return `<div class="card ev ${m.x ? 'x' : 'z'}" style="cursor:pointer" onclick="Events.openMatch('${m.id}')">
           <div class="pay"><b>${m.tour ? '🏅 Turnaj: ' : '🏆 vs. '}${esc(m.o)}</b><span class="pill ${m.x ? 'x' : m.fin ? 'ok' : 'z'}">${m.x ? 'Zrušeno' : m.fin ? 'Odehráno' : Util.date(m.d)}</span></div>
-          <div class="mut">${m.m ? `<b class="srz">🤝 Sraz ${esc(m.m)}</b> · výkop ` : ''}${esc(m.t)} · 📍 ${esc(m.pl)}</div>
+          <div class="mut">${m.m ? `<b class="srz">🤝 Sraz ${esc(m.m)}</b> · výkop ` : ''}${esc(m.t)}${Events.endTxt(m)} · 📍 ${esc(m.pl)}</div>
           <div class="mut">${m.fin ? '🏁 ' + (res ? Events.score(res) + ' · ' : '') + 'ukončeno · hrálo ' + m.lu.length + ' hráčů'
             : m.tour ? (Tour.games(m).length ? '🏁 ' + Tour.games(m).length + ' utkání' + (m.rank ? ' · ' + esc(m.rank) + '. místo' : '') : 'Klepnutím otevřete turnaj →') : res ? '🏁 ' + Events.score(res) : noms ? (m.nc ? '🔒 Nominace uzavřena' : 'Nominace rozpracována') + ' · ' + noms + ' hráčů · ' + Events.confirmSummary(m) : 'Klepnutím otevřete zápas →'}</div></div>`;
       }).join('') || Look.empty('trophy', 'Zatím žádné zápasy', 'Tento týden zatím žádný zápas. Přidejte ho formulářem níže.')}</div>${Events.form()}`;
@@ -460,9 +460,9 @@ class Events {
     return `<button class="btn" onclick="Events.closeMatch()">← Zápasy</button>
       <h2>${e.tour ? '🏅 Turnaj: ' : '🏆 vs. '}${esc(e.o)} · ${Util.date(e.d)} · ${e.m ? 'sraz ' + esc(e.m) : esc(e.t)}</h2>
       <div class="card ev ${e.x ? 'x' : e.k}"><div class="pay"><b>📍 ${esc(e.pl)} · ${e.tour ? 'turnaj ' : 'vs. '}${esc(e.o)}</b><span class="pill ${e.x ? 'x' : 'z'}">${e.x ? 'Zrušeno' : e.tour ? 'Turnaj' : 'Zápas'}</span></div>
-        <div class="pay" style="margin-top:8px"><span class="srz">🤝 Sraz <b>${e.m ? esc(e.m) : '—'}</b></span><span>🕒 Výkop <b>${esc(e.t)}</b></span></div>
+        <div class="pay" style="margin-top:8px"><span class="srz">🤝 Sraz <b>${e.m ? esc(e.m) : '—'}</b></span><span>🕒 Výkop <b>${esc(e.t)}</b></span>${e.te ? `<span>🏁 Konec cca <b>${esc(e.te)}</b></span>` : ''}</div>
         ${note ? `<div class="mut">${esc(note)}</div>` : ''}
-        ${e.x ? '' : UI.meetEdit == e.id ? Events.meetBox(e) : `<button class="btn" style="width:100%;margin-top:6px" onclick="Events.toggleMeet(${e.id})">✏ Změnit výkop a sraz</button>`}
+        ${e.x ? '' : UI.meetEdit == e.id ? Events.meetBox(e) : `<button class="btn" style="width:100%;margin-top:6px" onclick="Events.toggleMeet(${e.id})">✏ Změnit výkop, sraz a konec</button>`}
         ${e.x ? '' : Weather.toggle(e)}${Weather.line(e)}${Venues.placeBox(e)}
         <div class="row" style="margin-top:8px">
           ${!e.x ? `<button class="btn" onclick="Events.toggleNomination('${e.id}')">${e.nc ? '🔒 ' : ''}Nominace (${(DB.nominations[e.id] || []).length})</button>` : ''}
@@ -483,7 +483,8 @@ class Events {
     return `<h2>+ Přidat zápas</h2><div class="card">
       <div class="row"><select id="ev-day">${CONFIG.days.map((n, i) => `<option value="${i}">${Util.date(i)}</option>`).join('')}</select></div>
       ${Venues.select('ev-place')}
-      <input id="ev-time" placeholder="Výkop (např. 10:00)" inputmode="numeric" oninput="Events.kickoffChanged('ev')"><input id="ev-opp" placeholder="Soupeř (u turnaje název turnaje)">
+      <input id="ev-time" placeholder="Výkop (např. 10:00)" inputmode="numeric" oninput="Events.kickoffChanged('ev')">
+      <input id="ev-end" placeholder="Předpokládaný konec (nepovinné, např. 12:00)" inputmode="numeric"><input id="ev-opp" placeholder="Soupeř (u turnaje název turnaje)">
       ${Events.meetFields('ev')}
       <label class="pl"><span>🏅 Turnaj (víc utkání v jeden den)</span><input id="ev-tour" type="checkbox"></label>
       <label class="pl"><span>🌤 Zobrazit počasí (jen na našich hřištích venku)</span><input id="ev-wx" type="checkbox" checked></label>
@@ -503,6 +504,16 @@ class Events {
   }
   /** Sraz pro rodiče: „9:15 (45 min předem · u šaten)“; starší zápisy („15 min předem“) se ukážou, jak jsou. */
   static meet(e) { const n = Events.meetNote(e); return esc(e.m) + (n ? ' (' + esc(n) + ')' : ''); }
+  /** Zápas / turnaj: „ · konec cca 12:00“ (předpokládaný konec, nepovinný; uložený v time_end). */
+  static endTxt(e) { return e.te ? ' · konec cca ' + esc(e.te) : ''; }
+  /** Předpokládaný konec z pole #pf-end: '' = nezadán, null = chyba (už ohlášená). */
+  static readEnd(pf, t) {
+    const raw = (($('#' + pf + '-end') || {}).value || '').trim(), x = Events.mins(raw);
+    if (!raw) return '';
+    if (isNaN(x)) { alert('Předpokládaný konec napište jako 12:00.'); return null; }
+    if (!isNaN(Events.mins(t)) && x <= Events.mins(t)) { alert('Předpokládaný konec musí být později než výkop.'); return null; }
+    return Events.cleanTime(Events.hm(x));
+  }
   /** Tlačítka „30 / 45 / 60 / 90 min“ + čas a místo srazu (pf = předpona id polí, výkop je v #pf-time). */
   static meetFields(pf, e) {
     const off = e ? Events.mins(e.t) - Events.mins(e.m) : NaN;
@@ -532,6 +543,7 @@ class Events {
   static meetBox(e) {
     return `<div style="margin-top:8px;border-top:1px solid var(--bd);padding-top:8px">
       <label class="mut">Výkop<input id="me-time" value="${esc(e.t)}" inputmode="numeric" oninput="Events.kickoffChanged('me')"></label>
+      <label class="mut">Předpokládaný konec (nepovinné)<input id="me-end" value="${esc(e.te)}" placeholder="např. 12:00" inputmode="numeric"></label>
       ${Events.meetFields('me', e)}
       <label class="pl"><span>🔔 Upozornit rodiče na změnu</span><input id="me-notify" type="checkbox"></label>
       <div class="row" style="margin-top:8px"><button class="btn" onclick="Events.toggleMeet(${e.id})">Zrušit</button><button class="btn ok" onclick="Events.saveMeet(${e.id})">Uložit</button></div></div>`;
@@ -540,10 +552,10 @@ class Events {
     const e = Model.event(id), x = Events.mins($('#me-time').value), mt = Events.readMeet('me'), tell = $('#me-notify').checked;
     if (isNaN(x)) return alert('Čas výkopu napište jako 10:00.');
     if (!mt) return;
-    const t = Events.hm(x);
-    if (!await Sync.write('Sraz se nepodařilo uložit', sb.from('events').update({time: t, meet: mt.m, meet_place: mt.mpl}).eq('id', +id))) return;
-    Object.assign(e, {t, m: mt.m, mpl: mt.mpl}); UI.meetEdit = 0;
-    if (tell) Notifs.send('P', `🤝 Zápas vs. ${e.o} ${Util.date(e.d)} (${e.tm}): výkop ${t}${mt.m ? ', sraz ' + mt.m + (mt.mpl ? ' ' + mt.mpl : '') : ''}`, {team: e.tm, tab: 'cal'});
+    const t = Events.hm(x), te = Events.readEnd('me', t); if (te == null) return;
+    if (!await Sync.write('Sraz se nepodařilo uložit', Events.withEnd({time: t, meet: mt.m, meet_place: mt.mpl}, te, r => sb.from('events').update(r).eq('id', +id), true))) return;
+    Object.assign(e, {t, te, m: mt.m, mpl: mt.mpl}); UI.meetEdit = 0;
+    if (tell) Notifs.send('P', `🤝 ${e.tour ? 'Turnaj' : 'Zápas vs.'} ${e.o} ${Util.date(e.d)} (${e.tm}): výkop ${t}${mt.m ? ', sraz ' + mt.m + (mt.mpl ? ' ' + mt.mpl : '') : ''}${te ? ', konec cca ' + te : ''}`, {team: e.tm, tab: 'cal'});
     Sync.toast('✔ Uloženo.', true); App.render();
   }
 
@@ -788,7 +800,8 @@ class Events {
   static async add(k) {
     const u = UI.user, pf = k == 'z' ? 'ev' : 'tr', d = +$('#' + pf + '-day').value, place = $('#' + pf + '-place').value;
     const o = k == 'z' ? ($('#ev-opp').value.trim() || '?') : '', time = /^\d{1,2}:\d{2}$/.test($('#' + pf + '-time').value.trim()) ? $('#' + pf + '-time').value.trim() : '16:00';
-    const te = k == 't' ? Events.cleanTime(($('#tr-end') || {}).value) : '';            // konec tréninku (nepovinný)
+    const te = k == 't' ? Events.cleanTime(($('#tr-end') || {}).value) : Events.readEnd('ev', time);   // konec tréninku / předpokládaný konec zápasu (nepovinný)
+    if (te == null) return;
     if (place == '__new') return alert('Vyberte místo.');
     if (te && Util.toMin(te) <= Util.toMin(time)) return alert('Konec tréninku musí být později než začátek.');
     const tour = k == 'z' && !!($('#ev-tour') || {}).checked;
@@ -806,7 +819,7 @@ class Events {
     DB.events.push(ne);
     if ($('#' + pf + '-notify').checked) Events.notifyParents(ne);                       // jen když to trenér zvolil
     $('#' + pf + '-notify').checked = false;
-    UI.skipKeep = [pf + '-time', 'tr-end', 'ev-opp', 'ev-meet', 'ev-meetpl'];
+    UI.skipKeep = [pf + '-time', 'tr-end', 'ev-end', 'ev-opp', 'ev-meet', 'ev-meetpl'];
     App.render();
   }
   /** Uloží i konec tréninku; když databáze ještě nemá sloupec time_end (neproběhl schema.sql), uloží aspoň začátek. */

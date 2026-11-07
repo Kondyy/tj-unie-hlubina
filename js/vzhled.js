@@ -243,7 +243,7 @@ class Dnes {
     return `<div class="card dnes ${e.k}"><div class="pay"><span class="when">${Dnes.when(e)}</span><span class="kind">${esc(e.tm)}${who ? ' · ' + esc(who) : ''}</span></div>
       <div class="kind" style="margin-top:6px">${kind}</div>
       ${sraz ? `<div class="ln" style="margin-top:6px">🤝 Sraz${Events.meetNote(e) ? ' · ' + esc(Events.meetNote(e)) : ''}</div><div class="big">${esc(e.m)}</div>
-      <div class="ln">🕒 Výkop ${esc(e.t)} · 📍 ${esc(e.pl)}</div>`
+      <div class="ln">🕒 Výkop ${esc(e.t)}${Events.endTxt(e)} · 📍 ${esc(e.pl)}</div>`
       : `<div class="big">${esc(Util.timeRange(e))}</div>
       <div class="ln">📍 ${esc(e.pl)}</div>
       ${e.m ? `<div class="ln">🤝 Sraz: ${Events.meet(e)}</div>` : ''}`}
