@@ -197,9 +197,9 @@ class Util {
   static q(s) { return Util.esc(String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")); }
   /** Text bez diakritiky a malými písmeny – pro hledání. */
   static norm(s) { return String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim(); }
-  /** Pondělí zobrazovaného týdne (od pátku do neděle se ukazuje už příští týden). */
+  /** Pondělí zobrazovaného týdne (aktuální týden Po–Ne, nový týden se ukáže až v pondělí). */
   static weekStart() {
-    const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + 2);
+    const d = new Date(); d.setHours(0, 0, 0, 0);
     d.setDate(d.getDate() - (d.getDay() + 6) % 7);
     return d;
   }

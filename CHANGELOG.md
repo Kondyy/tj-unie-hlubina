@@ -6,6 +6,14 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 7. 11. 2026 (týden až od pondělí)
+
+- Týdenní přehled ukazuje **aktuální týden (Po–Ne) až do neděle**. Nový týden se přepne až v pondělí, takže o víkendu rodiče i trenéři vidí sobotní a nedělní akce (např. turnaj).
+
+**V Supabase:** nic.
+
+---
+
 ## 3. 11. 2026 (počasí u akcí)
 
 - **🌤 Počasí** se u tréninků a akcí v hale už nezobrazuje.
