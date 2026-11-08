@@ -173,7 +173,8 @@ const UI = {
   editRole: '',          // vedení/uživatelé: role v otevřeném editoru
   userMsg: '', userMsgOk: false,  // vedení/uživatelé: výsledek poslední akce
   asTeam: '',            // správce: kategorie, za kterou právě pracuje jako trenér
-  resEvent: '',          // trenér: zápas, u kterého se zapisuje výsledek
+  resEvent: '',          // trenér: turnaj, u kterého se zapisuje / upravuje utkání
+  resEdit: 0,            // trenér: id upravovaného utkání turnaje (0 = nové utkání)
   admMsg: '', admOk: false,   // správa: výsledek poslední akce
   ovTeam: 'all', ovSearch: '',  // vedení: přehled docházky (filtr kategorie, hledání)
   imp: null,             // vedení: rozečtený import z Excelu

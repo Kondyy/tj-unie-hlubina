@@ -208,15 +208,23 @@ class Tour {
     const s = Tour.stats(G), kid = UI.user.r == 'p' ? UI.kid : '';
     return `<div style="margin-top:8px"><b>🏅 Výsledky turnaje</b>${e.rank ? ` <span class="pill ok">${esc(e.rank)}. místo</span>` : ''}
       <div class="mut">${G.length} utkání · ${s.w}V ${s.d}R ${s.l}P · skóre ${s.gf}:${s.ga}${kid && s.sc[kid] ? ` · ⚽ ${esc(kid)} ${s.sc[kid]}×` : ''}</div>
-      ${G.map(r => `<div class="pay" style="margin-top:4px"><span>vs. ${esc(r.o)}</span><span class="pill ${r.s[0] > r.s[1] ? 'ok' : r.s[0] == r.s[1] ? 'wa' : 'no'}">${r.s[0]}:${r.s[1]}</span></div>`).join('')}</div>`;
+      ${G.map(r => `<div class="pay" style="margin-top:4px"><span>vs. ${esc(r.o)}</span><span class="pill ${r.s[0] > r.s[1] ? 'ok' : r.s[0] == r.s[1] ? 'wa' : 'no'}">${r.s[0]}:${r.s[1]}</span></div>${Tour.scorers(r) ? `<div class="mut" style="font-size:13px">⚽ ${Tour.scorers(r)}</div>` : ''}`).join('')}</div>`;
   }
+  /** Střelci jednoho utkání jako text „Adam 2, Lukáš 1“. */
+  static scorers(r) {
+    return Object.entries(r.g || {}).filter(([, g]) => g > 0).sort((a, b) => b[1] - a[1]).map(([n, g]) => esc(n) + ' ' + g).join(', ');
+  }
+  /** Karta turnaje pro trenéra: utkání (každé jde upravit nebo smazat), střelci, zápis dalšího utkání a umístění. */
   static box(e) {
-    const G = Tour.games(e), s = Tour.stats(G);
+    const G = Tour.games(e), s = Tour.stats(G), open = UI.resEvent == e.id;
     return `<div class="card" style="margin-top:10px"><div class="pay"><b>🏅 Turnaj: ${esc(e.o)}</b>${e.rank ? `<span class="pill ok">${esc(e.rank)}. místo</span>` : ''}</div>
       <div class="mut">${G.length} utkání · ${s.w}V ${s.d}R ${s.l}P · skóre ${s.gf}:${s.ga}</div>
-      ${G.map(r => `<div class="pay" style="margin-top:6px"><span>vs. ${esc(r.o)}</span><span class="pill ${r.s[0] > r.s[1] ? 'ok' : r.s[0] == r.s[1] ? 'wa' : 'no'}">${r.s[0]}:${r.s[1]}</span></div>`).join('')}
-      ${Object.keys(s.sc).length ? `<div class="mut" style="margin-top:6px">⚽ Střelci: ${Object.entries(s.sc).sort((a, b) => b[1] - a[1]).map(([n, c]) => esc(n) + ' ' + c).join(', ')}</div>` : ''}
-      <button class="btn" style="width:100%;margin-top:8px" onclick="Events.toggleResult('${e.id}')">+ Zapsat utkání</button>
+      ${G.map(r => open && UI.resEdit == r.id ? Events.resultBox(e, r) : `<div style="margin-top:8px;border-top:1px solid var(--bd);padding-top:6px">
+        <div class="pay"><span>vs. ${esc(r.o)}</span><span class="pill ${r.s[0] > r.s[1] ? 'ok' : r.s[0] == r.s[1] ? 'wa' : 'no'}">${r.s[0]}:${r.s[1]}</span></div>
+        <div class="pay" style="margin-top:2px"><span class="mut">${Tour.scorers(r) ? '⚽ ' + Tour.scorers(r) : 'Bez střelců'}</span>
+          <span style="display:flex;gap:6px;flex:none"><button class="btn" style="flex:none;min-height:36px" onclick="Events.toggleResult('${e.id}',${r.id})" aria-label="Upravit utkání vs. ${esc(r.o)}">✏</button><button class="btn" style="flex:none;min-height:36px;color:var(--r)" onclick="Events.removeResult(${r.id})" aria-label="Smazat utkání vs. ${esc(r.o)}">🗑</button></span></div></div>`).join('')}
+      ${Object.keys(s.sc).length ? `<div class="mut" style="margin-top:8px">⚽ Střelci celkem: ${Object.entries(s.sc).sort((a, b) => b[1] - a[1]).map(([n, c]) => esc(n) + ' ' + c).join(', ')}</div>` : ''}
+      ${open && !UI.resEdit ? Events.resultBox(e) : `<button class="btn" style="width:100%;margin-top:8px" onclick="Events.toggleResult('${e.id}')">+ Zapsat utkání</button>`}
       <div class="row" style="margin-top:8px"><input id="tr-rank-${e.id}" type="number" min="1" max="99" placeholder="Konečné umístění (např. 2)" value="${esc(e.rank || '')}"><button class="btn" style="flex:none" onclick="Tour.saveRank(${e.id})">Uložit umístění</button></div></div>`;
   }
   static async saveRank(id) {
