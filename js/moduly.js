@@ -363,7 +363,7 @@ class Attendance {
         <label class="pl"><span>🔔 Upozornit rodiče na nový trénink</span><input id="tr-notify" type="checkbox"></label>
         <button class="btn ok" style="width:100%" onclick="Events.add('t')">Přidat trénink</button></div>`;
     }
-    return `<button class="btn" onclick="Attendance.close()">← Tréninky</button>        <!-- 2) detail tréninku -->
+    return `<button class="btn back" onclick="Attendance.close()">← Tréninky</button>        <!-- 2) detail tréninku -->
       <h2>${Util.date(e.d)} · ${Util.timeRange(e)} · ${esc(e.pl)}</h2>${Weather.line(e)}${Attendance.coachCard(e)}
       <div class="row" style="margin-top:10px">${Events.notifyBtn(e)}</div>${Events.timeBox(e)}${Venues.placeBox(e)}${OfflineQ.badge()}${Attendance.answers(e)}
       <button class="btn ok" style="width:100%;margin-top:10px" onclick="Attendance.allPresent(${e.id})">✔ Všichni ostatní přítomni</button>
@@ -455,9 +455,9 @@ class Events {
       }).join('') || Look.empty('trophy', 'Zatím žádné zápasy', 'Tento týden zatím žádný zápas. Přidejte ho formulářem níže.')}</div>${Events.form()}`;
     }
     if (UI.closeEvent == e.id && UI.cl) return Events.closeView(e);                     // ukončení zápasu: docházka + výsledek
-    if (e.fin && !e.x) return `<button class="btn" onclick="Events.closeMatch()">← Zápasy</button>${Events.resultView(e, true)}`;   // ukončený zápas = výsledek
+    if (e.fin && !e.x) return `<button class="btn back" onclick="Events.closeMatch()">← Zápasy</button>${Events.resultView(e, true)}`;   // ukončený zápas = výsledek
     const note = Events.meetNote(e);
-    return `<button class="btn" onclick="Events.closeMatch()">← Zápasy</button>
+    return `<button class="btn back" onclick="Events.closeMatch()">← Zápasy</button>
       <h2>${e.tour ? '🏅 Turnaj: ' : '🏆 vs. '}${esc(e.o)} · ${Util.date(e.d)} · ${e.m ? 'sraz ' + esc(e.m) : esc(e.t)}</h2>
       <div class="card ev ${e.x ? 'x' : e.k}"><div class="pay"><b>📍 ${esc(e.pl)} · ${e.tour ? 'turnaj ' : 'vs. '}${esc(e.o)}</b><span class="pill ${e.x ? 'x' : 'z'}">${e.x ? 'Zrušeno' : e.tour ? 'Turnaj' : 'Zápas'}</span></div>
         <div class="pay" style="margin-top:8px"><span class="srz">🤝 Sraz <b>${e.m ? esc(e.m) : '—'}</b></span><span>🕒 Výkop <b>${esc(e.t)}</b></span></div>
@@ -567,7 +567,7 @@ class Events {
   static closeView(e) {
     const c = UI.cl, names = Object.keys(c.att), here = names.filter(n => c.att[n] == 'P'), others = Model.membersOf(e.tm).filter(m => !(m.n in c.att));
     const ans = {ok: '✔', no: '✖', wa: '⏳'}, noms = (DB.nominations[e.id] || []).length;
-    return `<button class="btn" onclick="Events.cancelClose()">← Zpět na zápas</button>
+    return `<button class="btn back" onclick="Events.cancelClose()">← Zpět na zápas</button>
       <h2>🏁 ${e.fin ? 'Upravit' : 'Ukončit'} ${e.tour ? 'turnaj ' : 'zápas vs. '}${esc(e.o)}</h2>
       <div class="card"><div class="pay"><b>1 · Kdo přišel</b><span class="pill ok">${here.length} / ${names.length} přítomno</span></div>
         <div class="mut" style="margin:4px 0 10px">${noms ? 'Nominovaní hráči.' : 'Nominace nebyla, proto je tu celá kategorie.'} Klepnutím na fotku: Přítomen → Omluven → Neomluven. Vlevo nahoře je odpověď rodiče.</div>
