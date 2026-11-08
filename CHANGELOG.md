@@ -6,6 +6,17 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 8. 11. 2026 (úprava utkání turnaje)
+
+- V okně turnaje má každé zapsané utkání tlačítka **✏ Upravit** a **🗑 Smazat**. Trenér může opravit soupeře, skóre, doma/venku i střelce – i po ukončení turnaje.
+- Hráčům se góly v profilu přepočítají: při úpravě se přičte/odečte jen rozdíl, při smazání utkání se jeho góly odečtou.
+- U každého utkání je vidět, kdo dal góly (trenér i rodiče), a pod utkáními souhrn „Střelci celkem“.
+- Formulář nového utkání se otevírá přímo v kartě turnaje.
+
+**V Supabase:** nic.
+
+---
+
 ## 7. 11. 2026 (týden až od pondělí)
 
 - Týdenní přehled ukazuje **aktuální týden (Po–Ne) až do neděle**. Nový týden se přepne až v pondělí, takže o víkendu rodiče i trenéři vidí sobotní a nedělní akce (např. turnaj).
