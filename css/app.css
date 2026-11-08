@@ -113,6 +113,7 @@ a{color:var(--acc)}
 .ib,.btn,.chip,select,input,textarea{font:inherit;color:var(--tx);background:var(--gl);border:1px solid var(--bd);border-radius:12px;padding:9px 12px}
 .ib,.btn,.chip{cursor:pointer;transition:transform .15s,background .15s,border-color .15s}
 .btn{min-height:46px;font-weight:600}
+.btn.back{margin-bottom:14px}                                  /* tlačítko zpět nesmí být nalepené na kartu pod ním */
 .btn:active,.chip:active{transform:scale(.97)}
 .btn:focus-visible,.chip:focus-visible,.ib:focus-visible,.pt:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 html[data-theme="light"] .btn:not(.ok):not(.no):not(.wa),html[data-theme="light"] .chip:not(.on):not(.ok):not(.no):not(.wa),html[data-theme="light"] .ib{background:var(--gl2)}

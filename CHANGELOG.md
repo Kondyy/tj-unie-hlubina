@@ -6,6 +6,11 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 8. 11. 2026 (mezera pod tlačítkem zpět)
+
+- Tlačítko **← Zápasy** (a další tlačítka zpět jako ← Tréninky, ← Zpět na zápas) už není nalepené na kartu pod ním, je pod ním malá mezera.
+- Žádná změna v Supabase.
+
 ## 8. 11. 2026 (úprava utkání turnaje)
 
 - V okně turnaje má každé zapsané utkání tlačítka **✏ Upravit** a **🗑 Smazat**. Trenér může opravit soupeře, skóre, doma/venku i střelce – i po ukončení turnaje.

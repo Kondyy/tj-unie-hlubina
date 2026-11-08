@@ -266,7 +266,7 @@ class SubCoach {
   static async load(id) { const r = await sb.rpc('sub_event_players', {eid: +id}); DB.subPl = r.error ? [] : r.data || []; App.render(); }
   static detail(e) {
     const L = DB.subPl;
-    return `<button class="btn" onclick="SubCoach.close()">← Tréninky</button><h2>🙋 Zástup ${esc(e.tm)} · ${Util.date(e.d)} · ${esc(Util.timeRange(e))}</h2>
+    return `<button class="btn back" onclick="SubCoach.close()">← Tréninky</button><h2>🙋 Zástup ${esc(e.tm)} · ${Util.date(e.d)} · ${esc(Util.timeRange(e))}</h2>
       <div class="card ev ${e.k}"><div class="mut">📍 ${esc(e.pl)}${e.m ? ' · 🤝 Sraz: ' + Events.meet(e) : ''}</div>${Weather.line(e)}</div>
       ${DB.eplans[e.id] ? `<div class="card"><b>📋 Plán tréninku</b><div style="white-space:pre-wrap;margin-top:6px">${esc(DB.eplans[e.id])}</div></div>` : ''}
       ${L == null ? Look.skeleton(3) : `<div class="g2">${L.map(p => `<div class="card"><b>${esc(p.full_name || p.short_name)}</b>
