@@ -220,7 +220,7 @@ class Auth {
     Sync.stop();
     Object.assign(DB, {users:{}, members:[], docs:{}, events:[], results:[], payItems:[], plan:[], messages:[], chats:{}, notifs:[], links:[], settings:{}, dm:[], dmContacts:[], tcoaches:[], aper:[], calTok:undefined,
                        att:{}, coachAtt:{}, coachNm:{}, coachEv:{}, pastT:[], nominations:{}, carpool:{}, responses:{}, notes:{}, seen:{},
-                       venues:[], eplans:{}, ttpl:[], tpls:[], cpool:{}, cpPeers:{}, subPl:null});
+                       venues:[], eplans:{}, ttpl:[], tpls:[], cpool:{}, cpPeers:{}, subPl:null, enoms:{}});
     UI.user = null; UI.asTeam = ''; UI.imp = null; UI.recovery = false; UI.more = false; UI.bell = false; UI.modal = null; UI.profile = false; UI.profMsg = ''; UI.pkSel = {}; UI.player = ''; UI.boot = false; UI.kid = ''; UI.editUser = ''; UI.dmWith = ''; UI.dmSearch = ''; UI.ai = null; UI.calTok = undefined; UI.calMsg = '';
     UI.offlineAt = 0; UI.usage = undefined; UI.errs = undefined; UI.subEvent = 0; UI.kidEdit = false;
     UI.skipKeep = ['lg-pass', 'lg-email'];
@@ -363,6 +363,7 @@ class Sync {
                                 mpl: e.meet_place || '', fin: e.finished ? 1 : 0, lu: Array.isArray(e.lineup) ? e.lineup : [], wx: e.weather === false ? 0 : 1}));
       DB.events.forEach(e => { if (e.k == 'z') DB.zids.add(String(e.id)); });
       DB.cpool = {};                                                  // spolujízda se dočte znovu u zobrazených zápasů
+      DB.enoms = {};                                                  // nominace pro rodiče taky (trenér ji mohl potvrdit / znovu otevřít)
     },
     /** Plány tréninků zobrazovaného týdne a šablony plánů (jen trenéři; ostatním databáze nic nevrátí) */
     eplans: async () => {
@@ -423,7 +424,7 @@ class Sync {
     },
     noms: async () => {
       const rows = await Sync.fetchAll('nominations', q => q.order('event_id').order('player_id'));
-      DB.nominations = {};
+      DB.nominations = {}; DB.enoms = {};
       rows.forEach(r => { const m = Model.byId(r.player_id); if (m) (DB.nominations[r.event_id] = DB.nominations[r.event_id] || []).push(m.n); });
     },
     notes: async () => {
