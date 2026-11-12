@@ -6,6 +6,12 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 12. 11. 2026 (nominace pro rodiče)
+
+- Rodiče u zápasů a turnajů vidí **celou nominaci hráčů** (rozklikávací „📋 Nominace (N hráčů)“), jakmile ji trenér potvrdí. Jen k prohlížení, vlastní dítě je zvýrazněné.
+- Dokud je nominace rozpracovaná, rodiče ji nevidí (zůstává „Nominaci ještě trenér nepotvrdil“).
+- **Supabase:** nová funkce `event_nominations` – spusťte v SQL Editoru celý `schema.sql`. Bez ní se seznam rodičům jen nezobrazí, nic jiného se nerozbije.
+
 ## 8. 11. 2026 (mezera pod tlačítkem zpět)
 
 - Tlačítko **← Zápasy** (a další tlačítka zpět jako ← Tréninky, ← Zpět na zápas) už není nalepené na kartu pod ním, je pod ním malá mezera.

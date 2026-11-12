@@ -76,7 +76,7 @@ class Calendar {
       <div class="mut">🕒 ${Util.date(e.d)} · výkop ${esc(e.t)} · 📍 ${esc(e.pl)} · 👤 ${esc(Model.coachSurnames(e))}</div>`
       : `<div class="mut">🕒 ${Util.date(e.d)}, ${Util.timeRange(e)} · 📍 ${esc(e.pl)}<br>${e.m ? `🤝 Sraz: ${Events.meet(e)} · ` : ''}👤 ${esc(Model.coachSurnames(e))}</div>`}
       ${Weather.line(e)}
-      ${e.x ? '' : Calendar.nomState(e)}
+      ${e.x ? '' : Calendar.nomState(e) + Calendar.nomList(e)}
       ${e.x || Calendar.notNominated(e) ? '' : `<div class="row" style="margin-top:10px">
           <button class="btn ${r && r.s == 'y' ? 'ok' : ''}" onclick="Calendar.attend('${Util.q(k)}')">✔ Zúčastní se</button>
           <button class="btn ${r && r.s == 'n' ? 'no' : ''}" onclick="Calendar.openExcuse('${Util.q(k)}')">✖ Omluvit se</button></div>
@@ -114,6 +114,20 @@ class Calendar {
     if (!e.nc) return '<div class="mut" style="margin-top:6px">⏳ Nominaci ještě trenér nepotvrdil.</div>';
     return Calendar.notNominated(e) ? `<div class="mut" style="margin-top:6px"><span class="pill wa">Nenominován(a)</span> ${esc(UI.kid)} na tento zápas není nominován(a).</div>`
       : `<div style="margin-top:6px"><span class="pill ok">🏆 Nominován(a)</span> <span class="mut">Nominaci potvrdil trenér – potvrďte prosím účast.</span></div>`;
+  }
+
+  /** Celá nominace na zápas / turnaj (jen k prohlížení) – rodiče ji vidí, jakmile ji trenér potvrdí. */
+  static nomList(e) {
+    if (e.k != 'z' || !e.nc) return '';
+    const L = DB.enoms[e.id];
+    if (L === undefined) { DB.enoms[e.id] = null; Calendar.loadNoms(e.id); return ''; }
+    if (!L || !L.length) return '';
+    return `<details class="nom-list" style="margin-top:6px"><summary><b>📋 Nominace</b> <span class="mut">(${L.length} ${L.length == 1 ? 'hráč' : L.length < 5 ? 'hráči' : 'hráčů'})</span></summary>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">${L.map(x => `<span class="pill ${x.kid == UI.kid ? 'ok' : 'z'}">${x.jersey_no != null ? '#' + x.jersey_no + ' ' : ''}${x.kid == UI.kid ? '<b>' + esc(x.kid) + '</b>' : esc(x.kid)}</span>`).join('')}</div></details>`;
+  }
+  static async loadNoms(id) {
+    try { const r = await sb.rpc('event_nominations', {eid: +id}); DB.enoms[id] = r.error ? [] : r.data || []; } catch (e) { DB.enoms[id] = []; }
+    App.refresh();
   }
 
   /** Výběr spolujízdy u zápasu. */

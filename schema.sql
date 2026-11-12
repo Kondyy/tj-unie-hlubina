@@ -1235,6 +1235,19 @@ $$ select pl.short_name, a.carpool, pp.parent_id, pr.name
     where e.id = eid and (public.can_see_team(e.team) or e.sub_coach = auth.uid())
     order by a.carpool, pl.short_name, pr.name $$;
 
+-- Nominace pro rodiče: rodič přes RLS vidí jen řádek svého dítěte, proto celou nominaci (jména hráčů)
+-- vrací tato funkce – jen u zápasu/turnaje s potvrzenou (uzavřenou) nominací a jen tomu, kdo vidí kategorii akce
+create or replace function public.event_nominations(eid bigint) returns table (kid text, jersey_no int)
+language sql stable security definer set search_path = public as
+$$ select pl.short_name, pl.jersey_no
+     from public.events e
+     join public.nominations n on n.event_id = e.id
+     join public.players pl on pl.id = n.player_id
+    where e.id = eid and e.nom_closed and (public.can_see_team(e.team) or e.sub_coach = auth.uid())
+    order by pl.short_name $$;
+revoke execute on function public.event_nominations(bigint) from public, anon;
+grant execute on function public.event_nominations(bigint) to authenticated;
+
 -- Trenérský deník: poznámku může trenér zpřístupnit rodiči (sdílená) a nastavit připomínku
 alter table public.notes add column if not exists shared    boolean not null default false;
 alter table public.notes add column if not exists remind_on date;

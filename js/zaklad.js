@@ -111,7 +111,7 @@ const CONFIG = {
 const DB = {
   users: {}, members: [], docs: {}, events: [], results: [], payItems: [], plan: [], messages: [],
   chats: {}, notifs: [], links: [], settings: {}, dm: [], dmContacts: [], tcoaches: [], aper: [], calTok: undefined, dmErr: '', pabs: {}, prefs: {},
-  venues: [], eplans: {}, ttpl: [], tpls: [], cpool: {}, cpPeers: {}, subPl: null,   // doplňky v4 (místa, plány, šablony, spolujízda, zástup)
+  venues: [], eplans: {}, ttpl: [], tpls: [], cpool: {}, cpPeers: {}, subPl: null, enoms: {},   // doplňky v4 (místa, plány, šablony, spolujízda, zástup)
   zids: new Set(),  // id všech zápasů (docházka na zápasech se nepočítá do procent tréninků)
   att: {},          // docházka:        "idUdálosti|jménoHráče"  → 'P' | 'O' | 'N'
   coachEv: {},      // druh a datum události u účasti trenéra: "idTrenéra|idUdálosti" → {k:'t', d:'2026-10-12'}
