@@ -327,3 +327,11 @@ html.big h2{font-size:24px}
 .mo .card.rvm{max-width:520px}
 .rvm .card{max-width:none}
 .srz b,b.srz{font-weight:800}                                                 /* sraz u zápasu: stejné písmo i velikost, jen tučně */
+
+/* Přepínání týdnů ‹ › (Přehled, Tréninky, Zápasy) */
+.wknav{display:flex;align-items:center;gap:8px;margin:0 0 10px}
+.wknav .ib{font-size:22px;line-height:1;min-width:46px;min-height:44px}
+.wknav .ib:disabled{opacity:.35;cursor:default}
+.wknav .wkt{flex:1;text-align:center;display:flex;flex-direction:column;line-height:1.2}
+.wknav .wkt span{color:var(--mut);font-size:13px}
+.wkback{display:block;margin:-2px auto 12px}

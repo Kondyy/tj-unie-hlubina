@@ -222,7 +222,7 @@ class Auth {
                        att:{}, coachAtt:{}, coachNm:{}, coachEv:{}, pastT:[], nominations:{}, carpool:{}, responses:{}, notes:{}, seen:{},
                        venues:[], eplans:{}, ttpl:[], tpls:[], cpool:{}, cpPeers:{}, subPl:null});
     UI.user = null; UI.asTeam = ''; UI.imp = null; UI.recovery = false; UI.more = false; UI.bell = false; UI.modal = null; UI.profile = false; UI.profMsg = ''; UI.pkSel = {}; UI.player = ''; UI.boot = false; UI.kid = ''; UI.editUser = ''; UI.dmWith = ''; UI.dmSearch = ''; UI.ai = null; UI.calTok = undefined; UI.calMsg = '';
-    UI.offlineAt = 0; UI.usage = undefined; UI.errs = undefined; UI.subEvent = 0; UI.kidEdit = false;
+    UI.offlineAt = 0; UI.usage = undefined; UI.errs = undefined; UI.subEvent = 0; UI.kidEdit = false; UI.wk = 0; UI.wkBusy = false;
     UI.skipKeep = ['lg-pass', 'lg-email'];
     App.render();
   }
@@ -353,11 +353,12 @@ class Sync {
         if (UI.user.r == 'p' && !UI.user.kids.includes(UI.kid)) { UI.kid = UI.user.kids[0] || ''; UI.chatTeam = UI.kid ? Model.team(UI.kid) : ''; }
       }
     },
-    /** Události zobrazovaného týdne */
+    /** Události zobrazovaného týdne (UI.wk) */
     events: async () => {
-      const a = Util.iso(Util.dayDate(0)), b = Util.iso(Util.dayDate(6));
+      const wk = UI.wk, a = Util.iso(Util.dayDate(0)), b = Util.iso(Util.dayDate(6));
       try { await sb.rpc('sync_plan_events', {week_start: a}); } catch (e) { console.warn('sync_plan_events', e); }   // tréninky vzniklé z rozvrhu hřišť (idempotentní)
       const ev = await Sync.fetchAll('events', q => q.gte('event_date', a).lte('event_date', b).order('id'));
+      if (wk != UI.wk) return;                                        // mezitím se přepnul týden → načte ho jiné volání
       DB.events = ev.map(e => ({id: e.id, k: e.kind, tm: e.team, d: Util.dayIndex(e.event_date), t: e.time, te: e.time_end || '', pl: e.place, m: e.meet, c: e.coach, o: e.opponent || '', x: e.cancelled ? 1 : 0, nc: e.nom_closed ? 1 : 0,
                                 br: e.bring || '', tour: e.tour ? 1 : 0, rank: e.placement || '', sc: e.sub_coach || null,
                                 mpl: e.meet_place || '', fin: e.finished ? 1 : 0, lu: Array.isArray(e.lineup) ? e.lineup : [], wx: e.weather === false ? 0 : 1}));
@@ -366,10 +367,11 @@ class Sync {
     },
     /** Plány tréninků zobrazovaného týdne a šablony plánů (jen trenéři; ostatním databáze nic nevrátí) */
     eplans: async () => {
-      DB.eplans = {}; DB.ttpl = [];
-      const a = Util.iso(Util.dayDate(0)), b = Util.iso(Util.dayDate(6));
+      const wk = UI.wk, a = Util.iso(Util.dayDate(0)), b = Util.iso(Util.dayDate(6));
       const [p, t] = await Promise.all([sb.from('event_plans').select('event_id, body, events!inner(event_date)').gte('events.event_date', a).lte('events.event_date', b),
                                         sb.from('training_templates').select('id, team, name, body').order('name')]);
+      if (wk != UI.wk) return;
+      DB.eplans = {}; DB.ttpl = [];
       if (!p.error && p.data) p.data.forEach(r => DB.eplans[r.event_id] = r.body);
       if (!t.error && t.data) DB.ttpl = t.data;
     },
