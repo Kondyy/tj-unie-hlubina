@@ -6,6 +6,14 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 16. 11. 2026 (bezpečnost: přílohy v chatu)
+
+- **Opraveno:** přes upravenou přílohu zprávy (rozměry fotky, velikost souboru) šlo do chatu vložit kód, který by se spustil ostatním, kteří chat otevřou. Aplikace teď rozměry a velikost bere jen jako čísla a databáze přílohu s neplatnými údaji (jiné klíče, ne-čísla, nepovolený typ souboru) odmítne.
+
+**V Supabase:** spusťte celý `schema.sql` (nová kontrola příloh v `msg_att_check`).
+
+---
+
 ## 16. 11. 2026 (záložka Trenéři i pro správce)
 
 - Správce má také záložku **🧢 Trenéři** (hned za Docházkou): docházka trenérů za zvolený měsíc, přepínání měsíců šipkami, filtr kategorie a výkaz do Excelu.
