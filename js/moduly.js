@@ -1370,7 +1370,7 @@ class Chat {
     const ct = team.startsWith('T-');                                  // interní chat trenérů kategorie
     return `<div class="card"><div class="pay"><b>${ct ? '🔒 Chat trenérů ' + team.slice(2) : '💬 Chat ' + team}</b><span class="mut">${ct ? 'jen trenéři kategorie ' + team.slice(2) : 'trenéři a rodiče kategorie ' + team}</span></div>
       <div class="chat" id="chat-box" data-k="${esc(team)}" style="margin-top:10px">${Model.chat(team).map(m => `<div class="bub ${m.fid == u.id ? 'me' : ''}">
-        <div class="nm"><b>${esc(m.f)}</b>${m.role == 'Trenér' ? '<span class="pill ok">Trenér</span>' : ''}</div>${esc(m.x)}<div class="tm">${esc(m.t)}</div>${Chat.reactions(m, u)}</div>`).join('') || `<div class="empty" style="padding:14px"><div class="eic">${Icons.svg('chat')}</div><b>Zatím žádné zprávy</b><div class="mut">Napište první zprávu – uvidí ji ${ct ? 'trenéři' : 'trenéři a rodiče'} kategorie.</div></div>`}</div>
+        <div class="nm"><b>${esc(m.f)}</b>${m.role == 'Trenér' ? '<span class="pill ok">Trenér</span>' : ''}</div>${esc(m.x)}${Chat.foot(m, u)}</div>`).join('') || `<div class="empty" style="padding:14px"><div class="eic">${Icons.svg('chat')}</div><b>Zatím žádné zprávy</b><div class="mut">Napište první zprávu – uvidí ji ${ct ? 'trenéři' : 'trenéři a rodiče'} kategorie.</div></div>`}</div>
       <div class="cin"><input id="chat-input" autocomplete="off" placeholder="Napište zprávu…" onkeydown="if(event.key==='Enter')Chat.send()"><button class="btn ok" onclick="Chat.send()">Odeslat</button></div>${Tpl.chips()}</div>`;
   }
 
@@ -1384,14 +1384,21 @@ class Chat {
       <div style="margin:6px 0">${esc(m.x)}</div><div class="mut">${esc(m.f)} · ${esc(m.role)} · ${esc(m.t)}</div></div>`).join('') || Look.empty('mega', 'Žádné zprávy od klubu', 'Až vedení klubu pošle oznámení, najdete ho tady.');
   }
 
-  /** Tlačítka 👍 / 👎 pod zprávou s počty; zvýrazněná je moje reakce. Podržením / najetím myší se ukáže, kdo reagoval. */
-  static reactions(m, u) {
-    const L = DB.reacts[m.id] || [], mine = (L.find(r => r.u == u.id) || {}).k || 0;
-    const btn = (k, ic, lbl) => { const who = L.filter(r => r.k == k), n = who.length;
-      return `<button type="button" class="rxb ${mine == k ? 'on' : ''}" onclick="Chat.react(${+m.id}, ${k})" aria-pressed="${mine == k}"
-        aria-label="${lbl}${n ? ': ' + n : ''}" title="${esc(n ? who.map(r => r.u == u.id ? 'Vy' : r.n).join(', ') : lbl)}">${ic}${n ? `<span>${n}</span>` : ''}</button>`; };
-    return `<div class="rx">${btn(1, '👍', 'Palec nahoru')}${btn(-1, '👎', 'Palec dolů')}</div>`;
+  static RX = [[1, '👍', 'Palec nahoru'], [-1, '👎', 'Palec dolů']];
+  /** Spodek zprávy (jako WhatsApp): vlevo dané reakce s počty, vpravo čas a malé „+“, které otevře výběr 👍 / 👎.
+      Klik na reakci s počtem ji přidá / zruší; najetím myší (na telefonu podržením) se ukáže, kdo reagoval. */
+  static foot(m, u) {
+    const L = DB.reacts[m.id] || [], mine = (L.find(r => r.u == u.id) || {}).k || 0, id = +m.id;
+    const chips = Chat.RX.map(([k, ic, lbl]) => { const who = L.filter(r => r.k == k), n = who.length; if (!n) return '';
+      return `<button type="button" class="rxb ${mine == k ? 'on' : ''}" onclick="Chat.react(${id}, ${k})" aria-pressed="${mine == k}"
+        aria-label="${lbl}: ${n}" title="${esc(who.map(r => r.u == u.id ? 'Vy' : r.n).join(', '))}">${ic}<span>${n}</span></button>`; }).join('');
+    const pick = UI.rxOpen == id ? `<div class="rxpk" role="menu">${Chat.RX.map(([k, ic, lbl]) =>
+      `<button type="button" role="menuitem" class="${mine == k ? 'on' : ''}" onclick="Chat.react(${id}, ${k})" aria-label="${lbl}" title="${lbl}">${ic}</button>`).join('')}</div>` : '';
+    return `<div class="ft"><div class="rx">${chips}</div><span class="tm">${esc(m.t)}</span>
+      <button type="button" class="rxadd ${UI.rxOpen == id ? 'on' : ''}" onclick="Chat.pick(${id})" aria-label="Přidat reakci" aria-expanded="${UI.rxOpen == id}" title="Přidat reakci">+</button>${pick}</div>`;
   }
+  /** Otevře / zavře výběr reakce u zprávy. */
+  static pick(id) { UI.rxOpen = UI.rxOpen == id ? 0 : id; App.render(); }
 
   // ----- akce -----
   static show(sub, team) { UI.chatSub = sub; if (team) UI.chatTeam = team; App.render(); }
@@ -1399,6 +1406,7 @@ class Chat {
   static async react(id, k) {
     const u = UI.user; if (!u || UI.offlineAt) return;
     const L = DB.reacts[id] || (DB.reacts[id] = []), i = L.findIndex(r => r.u == u.id), was = i >= 0 ? L[i].k : 0;
+    UI.rxOpen = 0;                                                  // výběr reakce zavřít
     if (i >= 0) L.splice(i, 1);
     if (was != k) L.push({u: u.id, n: u.name || 'Vy', k});
     App.render();
@@ -1419,6 +1427,10 @@ class Chat {
     App.render();
   }
 }
+
+
+// Klik kamkoli mimo výběr reakce ho zavře
+document.addEventListener('click', e => { if (UI.rxOpen && !e.target.closest('.rxpk,.rxadd')) { UI.rxOpen = 0; App.render(); } });
 
 
 /* ---------------------------------------------------------------------

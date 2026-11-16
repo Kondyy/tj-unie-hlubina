@@ -179,15 +179,23 @@ button.btn.ok{background:var(--grad);border-color:transparent;color:#fff;font-we
 html[data-theme="light"] .bub.me{background:#dbe6fb;border-color:#b9cdf5}
 .bub .nm{font-size:12px;color:var(--mut);display:flex;gap:6px;align-items:center;margin-bottom:2px}
 .bub .tm{font-size:11px;color:var(--mut);text-align:right;margin-top:2px}
-.bub .rx{display:flex;gap:6px;margin-top:4px}
-.bub.me .rx{justify-content:flex-end}
-.rxb{display:inline-flex;align-items:center;gap:4px;min-height:28px;padding:2px 9px;border-radius:999px;border:1px solid var(--bd);background:transparent;color:var(--tx);font:inherit;font-size:13px;line-height:1;cursor:pointer;opacity:.75}
-.rxb span{font-size:12px;font-weight:600}
-.rxb:hover{opacity:1}
-.rxb.on{opacity:1;background:rgba(36,82,161,.35);border-color:rgba(100,140,230,.8)}
+.bub .ft{position:relative;display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:2px}
+.bub .ft .tm{margin-top:0}
+.bub .rx{display:flex;gap:4px;margin-right:auto}
+.bub .rx:empty{display:none}
+.rxb{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:999px;border:1px solid var(--bd);background:var(--gl2);color:var(--tx);font:inherit;font-size:12px;line-height:1.2;cursor:pointer}
+.rxb span{font-size:11px;font-weight:600}
+.rxb.on{background:rgba(36,82,161,.35);border-color:rgba(100,140,230,.8)}
 .bub.me .rxb.on{background:rgba(227,30,38,.35);border-color:rgba(240,110,115,.8)}
 html[data-theme="light"] .rxb.on{background:#dbe6fb;border-color:#7fa0e0}
 html[data-theme="light"] .bub.me .rxb.on{background:#fde0e1;border-color:#e98a8e}
+.rxadd{width:18px;height:18px;padding:0;border-radius:50%;border:1px solid var(--bd);background:transparent;color:var(--mut);font:inherit;font-size:13px;line-height:15px;text-align:center;cursor:pointer;opacity:.7;flex:none;position:relative}
+.rxadd::after{content:"";position:absolute;inset:-10px}   /* větší plocha pro prst, ikonka zůstává malá */
+.rxadd:hover,.rxadd.on{opacity:1;color:var(--tx)}
+.rxpk{position:absolute;right:24px;top:50%;transform:translateY(-50%);z-index:5;display:flex;gap:2px;padding:4px;border-radius:999px;background:var(--bg2,#1b2232);border:1px solid var(--bd);box-shadow:0 6px 20px rgba(0,0,0,.35)}
+html[data-theme="light"] .rxpk{background:#fff;box-shadow:0 6px 20px rgba(0,0,0,.15)}
+.rxpk button{width:38px;height:38px;border:0;border-radius:50%;background:transparent;font-size:22px;line-height:1;cursor:pointer;padding:0}
+.rxpk button:hover,.rxpk button.on{background:rgba(127,127,127,.22)}
 .cin{display:flex;gap:8px;margin-top:10px}
 .cin input{margin:0;flex:1}
 .cin .btn{flex:none}

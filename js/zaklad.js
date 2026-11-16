@@ -166,6 +166,7 @@ const UI = {
   plYear: '',            // hráči: filtr ročníku ('' = všechny)
   plAtt: '',             // hráči: filtr docházky g / y / r ('' = jakákoli)
   chatTeam: '',          // chat: vybraná kategorie
+  rxOpen: 0,             // chat: u které zprávy je otevřený výběr reakce (+)
   chatSub: 'team',       // chat: 'team' (chat kategorie) | 'club' (zprávy od klubu)
   focusChat: false,      // po odeslání vrátit kurzor do pole zprávy
   msgKind: 'all',        // vedení/zprávy: příjemce all | trainers | user
