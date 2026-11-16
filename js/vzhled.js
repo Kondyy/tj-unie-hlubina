@@ -268,6 +268,7 @@ class Dnes {
   }
   /** Rodič (záložka Přehled): nejbližší akce dítěte + Přijdu / Omluvit / Navigovat. */
   static parent(team) {
+    if (UI.wk) return '';                                             // jiný než aktuální týden: bez karty „nejbližší akce“
     const e = Dnes.next(Model.eventsOf(team)); if (!e) return '';
     const k = UI.kid + '|' + e.id, r = DB.responses[k], can = !Calendar.notNominated(e);
     const btns = (can ? `<button class="btn ${r && r.s == 'y' ? 'ok' : ''}" onclick="Calendar.attend('${Util.q(k)}')">✔ Přijdu</button>
@@ -276,6 +277,7 @@ class Dnes {
   }
   /** Trenér (záložka Tréninky): nejbližší akce kategorie + otevřít docházku / zápas. */
   static coach(team) {
+    if (UI.wk) return '';
     const e = Dnes.next(Model.eventsOf(team)); if (!e) return '';
     const open = e.k == 'z' ? `<button class="btn ok" onclick="UI.tab='ev';Events.openMatch('${e.id}')">🏆 Otevřít ${e.tour ? 'turnaj' : 'zápas'}</button>`
                             : `<button class="btn ok" onclick="Attendance.open('${e.id}')">📋 Otevřít docházku</button>`;
