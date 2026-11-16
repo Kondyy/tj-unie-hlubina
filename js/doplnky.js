@@ -325,6 +325,29 @@ class Report {
 
 
 /* ---------------------------------------------------------------------
+   HeadNotif – šéftrenér mládeže si v Nastavení vybere kategorie a druhy upozornění (user_prefs.notif.hd).
+   Rozesílá je databáze (head_wants, events_head_notify, results_head_notify ve schema.sql).
+   --------------------------------------------------------------------- */
+class HeadNotif {
+  static KINDS = [['new', '📅 Nové tréninky a zápasy', 'ručně přidané; tréninky z rozvrhu hřišť ne'], ['chg', '❌ Zrušení a změna času', ''],
+                  ['res', '🏁 Výsledky zápasů a turnajů', ''], ['exc', '🩹 Omluvenky hráčů', ''], ['coach', '⚠ Trenér nepřijde', 'na trénink nebo zápas']];
+  static get() { const h = (DB.prefs || {}).hd; return h && typeof h == 'object' ? {teams: [], ...h} : {teams: []}; }
+  static save(h) { Settings.pref('hd', h); }
+  static card() {
+    const h = HeadNotif.get(), teams = CONFIG.planner.teams;
+    return `<div class="card"><b>🔔 Upozornění z kategorií</b>
+      <div class="mut" style="margin-top:4px">Vyberte kategorie a co z nich chcete dostávat (do zvonku i do telefonu).</div>
+      <div class="row" style="margin-top:8px">${teams.map(t => `<button class="chip ${h.teams.includes(t) ? 'on' : ''}" onclick="HeadNotif.team('${Util.q(t)}')">${h.teams.includes(t) ? '✔ ' : ''}${esc(t)}</button>`).join('')}</div>
+      ${h.teams.length ? '' : '<div class="mut" style="margin-top:6px">Zatím žádná kategorie – z kategorií nic nechodí.</div>'}
+      <div style="margin-top:8px;border-top:1px solid var(--bd);padding-top:6px">${HeadNotif.KINDS.map(([k, l, d]) =>
+        `<label class="pl"><span>${l}${d ? `<span class="mut" style="display:block;font-size:12px">${d}</span>` : ''}</span><input type="checkbox" ${h[k] ? 'checked' : ''} onchange="HeadNotif.kind('${k}',this.checked)"></label>`).join('')}</div></div>`;
+  }
+  static team(t) { const h = HeadNotif.get(); h.teams = h.teams.includes(t) ? h.teams.filter(x => x != t) : [...h.teams, t]; HeadNotif.save(h); }
+  static kind(k, on) { const h = HeadNotif.get(); h[k] = !!on; HeadNotif.save(h); }
+}
+
+
+/* ---------------------------------------------------------------------
    CoachMonth – záložka „Trenéři“ šéftrenéra mládeže: docházka trenérů za zvolený měsíc (šipkami ‹ › jiný měsíc)
    Účast = tréninky, kde trenér potvrdil „Zúčastním se“; proběhlý trénink jeho kategorie bez potvrzení = absence
    (stejně jako v kartě „Moje absence a docházka“ trenéra). Zápasy a hodiny jako v měsíčním výkazu (Report).

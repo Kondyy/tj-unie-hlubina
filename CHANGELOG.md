@@ -19,6 +19,16 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 16. 11. 2026 (upozornění pro šéftrenéra mládeže)
+
+- Šéftrenér mládeže si v **Nastavení → Upozornění z kategorií** vybere kategorie (např. jen U9 a U11) a co z nich chce dostávat: nové tréninky a zápasy, zrušení a změnu času, výsledky zápasů a turnajů, omluvenky hráčů a zprávu, že trenér nepřijde. Vše je ve výchozím stavu vypnuté.
+- Nové akce, zrušení, změny a výsledky hlásí databáze sama, i když trenér rodiče neupozornil. Tréninky vzniklé z rozvrhu hřišť se nehlásí, jen ručně přidané.
+- Klepnutí na upozornění přepne aplikaci na jeho kategorii.
+
+**V Supabase:** spustit celý `schema.sql` v SQL Editoru.
+
+---
+
 ## 16. 11. 2026 (role Šéftrenér mládeže)
 
 - Nová role **Šéftrenér mládeže**. Vidí všechno jako trenér kategorie (tréninky, zápasy, docházku, hráče, rodiče, poznámky, rozvrh hřišť, chat), ale **nic neupravuje**: tlačítka pro přidání, zrušení či smazání tréninku a zápasu, docházku, nominace, výsledky a úpravy hráčů nevidí a pole má zamčená. Zápis mu zakazuje i databáze (RLS), nejen aplikace.

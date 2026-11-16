@@ -128,6 +128,7 @@ class Notifs {
       UI.tab = n.tab;
       if (n.sub) UI.chatSub = n.sub;
       if (n.sub == 'dm' && n.by) UI.dmWith = n.by;
+      if (u.r == 's' && n.team && n.team != u.team && CONFIG.planner.teams.includes(n.team)) { UI.asTeam = u.team = n.team; UI.player = ''; UI.attEvent = 0; UI.matchEvent = 0; }   // šéftrenér: přepnout na kategorii upozornění
       if (u.r == 'p') {
         if (n.team) { UI.chatTeam = n.team; const k = u.kids.find(k => Model.team(k) == n.team); if (k) UI.kid = k; }
         if (n.kid && u.kids.includes(n.kid)) { UI.kid = n.kid; UI.chatTeam = Model.team(n.kid); }
