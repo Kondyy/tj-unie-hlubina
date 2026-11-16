@@ -1582,13 +1582,16 @@ class ChatFiles {
   static html(m) {
     const a = m.a; if (!a || !a.p) return '';
     const p = esc(a.p);
-    if (ChatFiles.IMG.includes(a.m) && a.w && a.h) {
-      const src = ChatFiles.src(a.p), w = Math.min(260, a.w);
-      return `<button type="button" class="attimg" onclick="Chat.viewImg(this.dataset.p)" data-p="${p}" aria-label="Zobrazit fotku" style="width:${w}px;aspect-ratio:${a.w} / ${a.h}">
+    // Popis přílohy může poslat kdokoli z chatu i mimo aplikaci → rozměry a velikost brát jen jako kladná celá čísla (jinak by šlo do stránky vložit kód)
+    const num = v => { const x = Math.round(Number(v)); return Number.isFinite(x) && x > 0 && x <= 1e9 ? x : 0; };
+    const iw = Math.min(num(a.w), 20000), ih = Math.min(num(a.h), 20000), size = num(a.s);
+    if (ChatFiles.IMG.includes(a.m) && iw && ih) {
+      const src = ChatFiles.src(a.p), w = Math.min(260, iw);
+      return `<button type="button" class="attimg" onclick="Chat.viewImg(this.dataset.p)" data-p="${p}" aria-label="Zobrazit fotku" style="width:${w}px;aspect-ratio:${iw} / ${ih}">
         <img data-cf="${p}" alt="Fotka" ${src ? `src="${src}"` : ''}>${src || ChatFiles.failed[a.p] ? '' : '<span class="mut">Načítám fotku…</span>'}${ChatFiles.failed[a.p] ? '<span class="mut">Fotka už není k dispozici</span>' : ''}</button>`;
     }
     return `<button type="button" class="attf" onclick="Chat.openFile(this.dataset.p)" data-p="${p}"><span class="attic">${ChatFiles.icon(a.m)}</span>
-      <span class="attn"><b>${esc(a.n)}</b><span class="mut">${a.s ? ChatFiles.size(a.s) + ' · ' : ''}otevřít / stáhnout</span></span></button>`;
+      <span class="attn"><b>${esc(a.n)}</b><span class="mut">${size ? ChatFiles.size(size) + ' · ' : ''}otevřít / stáhnout</span></span></button>`;
   }
   /** Najde popis přílohy podle cesty (v chatu kategorie i v soukromých zprávách). */
   static find(path) {

@@ -793,6 +793,11 @@ create trigger dm_after_insert after insert on public.direct_messages for each r
 alter table public.chat_messages   add column if not exists att jsonb;
 alter table public.direct_messages add column if not exists att jsonb;
 
+-- Je hodnota z JSON celé číslo v rozsahu lo..hi? (pro rozměry, velikost a příznak přílohy)
+create or replace function public.att_int(v jsonb, lo bigint, hi bigint) returns boolean
+language sql immutable set search_path = public as
+$$ select case when jsonb_typeof(v) = 'number' and (v #>> '{}') ~ '^[0-9]{1,12}$' then (v #>> '{}')::bigint between lo and hi else false end $$;
+
 -- Příloha musí ležet ve složce odesílatele v tomtéž chatu (nelze podstrčit cizí soubor)
 create or replace function public.msg_att_check() returns trigger
 language plpgsql security definer set search_path = public as
@@ -803,6 +808,23 @@ $$ declare pre text; p text; begin
   p := case when jsonb_typeof(new.att) = 'object' then coalesce(new.att ->> 'p', '') else '' end;
   if left(p, length(pre)) <> pre or length(p) <= length(pre) or position('/' in substr(p, length(pre) + 1)) > 0
      or length(coalesce(new.att ->> 'n', '')) not between 1 and 200 or length(new.att::text) > 1000 then
+    raise exception 'Neplatná příloha zprávy.';
+  end if;
+  -- Ostatní údaje přílohy aplikace vkládá do stránky → jen známé klíče a čísla jako čísla (ochrana proti vložení kódu)
+  if exists (select 1 from jsonb_object_keys(new.att) k where k not in ('p','n','s','m','w','h','c'))
+     or (new.att ? 's' and not public.att_int(new.att -> 's', 0, 10485760))
+     or (new.att ? 'w' and not public.att_int(new.att -> 'w', 1, 20000))
+     or (new.att ? 'h' and not public.att_int(new.att -> 'h', 1, 20000))
+     or (new.att ? 'c' and not public.att_int(new.att -> 'c', 1, 1))
+     or (new.att ? 'm' and coalesce(new.att ->> 'm', '') not in ('',
+           'image/jpeg','image/png','image/webp','image/gif','image/heic','image/heif',
+           'application/pdf','text/plain','text/csv',
+           'application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+           'application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+           'application/vnd.ms-powerpoint','application/vnd.openxmlformats-officedocument.presentationml.presentation',
+           'application/vnd.oasis.opendocument.text','application/vnd.oasis.opendocument.spreadsheet',
+           'application/zip','application/x-zip-compressed',
+           'video/mp4','video/quicktime','audio/mpeg','audio/mp4','audio/x-m4a')) then
     raise exception 'Neplatná příloha zprávy.';
   end if;
   return new;
