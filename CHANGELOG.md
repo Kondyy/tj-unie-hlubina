@@ -6,6 +6,16 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 16. 11. 2026 (reakce jako na WhatsAppu)
+
+- Pod zprávou už nejsou pořád vidět oba palce. Vpravo dole vedle času je jen malé **+**. Po klepnutí se ukáže nabídka **👍 👎**, klepnutím na palec se reakce uloží a nabídka zavře.
+- Na zprávě se ukazují jen reakce, které někdo dal, s počtem (např. 👍 3). Klepnutím na ni přidáte nebo zrušíte svoji stejnou reakci.
+- Klepnutí kamkoli jinam nabídku zavře.
+
+**V Supabase:** nic.
+
+---
+
 ## 16. 11. 2026 (reakce v chatu)
 
 - Pod každou zprávou v **💬 Chatu** kategorie (i v chatu trenérů) jsou tlačítka **👍** a **👎** s počtem reakcí. Počty vidí všichni v chatu.
