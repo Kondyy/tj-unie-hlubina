@@ -433,7 +433,7 @@ class Attendance {
     const e = Model.event(id);
     DB.coachAtt[UI.user.id + '|' + id] = v; DB.coachNm[UI.user.id + '|' + id] = Util.surname(UI.user.name); DB.coachEv[UI.user.id + '|' + id] = {k: e.k, d: Util.iso(Util.dayDate(e.d))};
     Sync.write('Účast se nepodařilo uložit', sb.from('coach_attendance').upsert({event_id: +id, coach_id: UI.user.id, state: v}, {onConflict: 'event_id,coach_id'}));
-    if (v == 'n') Notifs.send('V', `⚠ Trenér ${UI.user.name} se nezúčastní: ${e.k == 'z' ? 'zápas' : 'trénink'} ${Util.date(e.d)} (${e.tm})`);
+    if (v == 'n') Notifs.send('V', `⚠ Trenér ${UI.user.name} se nezúčastní: ${e.k == 'z' ? 'zápas' : 'trénink'} ${Util.date(e.d)} (${e.tm})`, {team: e.tm});   // kategorie: kvůli šéftrenérovi
     App.render();
   }
 }
@@ -2430,6 +2430,7 @@ class Settings {
           <div class="mut" style="margin-top:6px">Týká se upozornění do telefonu. Zvonek v aplikaci zobrazuje vše.</div></div>
         ${Settings.quiet()}
         ${UI.setMsg ? `<div class="${UI.setOk ? 'cg' : 'warn'}" style="margin-top:8px">${esc(UI.setMsg)}</div>` : ''}</div>
+      ${u.r == 's' ? HeadNotif.card() : ''}
       ${Theme.card()}
       ${u.r == 's' ? '' : Settings.chatRetention()}
       ${Settings.calendar()}

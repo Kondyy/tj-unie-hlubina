@@ -195,6 +195,7 @@ create table if not exists public.club_messages (
 -- Notifikace (zvonek). aud = komu patří:
 --   a všem · T všem trenérům · V vedení · C trenérům kategorie "team"
 --   P rodičům kategorie "team" · K rodičům dítěte "kid" · U jednomu uživateli (to_user)
+--   H jen šéftrenérům mládeže, kteří si kategorii "team" a druh "kind" zapnuli v Nastavení
 create table if not exists public.notifications (
   id         bigint generated always as identity primary key,
   aud        text not null check (aud in ('a','T','V','C','P','K','U')),
@@ -208,6 +209,10 @@ create table if not exists public.notifications (
   by_user    uuid default auth.uid() references public.profiles(id) on delete set null,
   created_at timestamptz not null default now()
 );
+-- Druh upozornění pro šéftrenéra mládeže: exc omluvy · new nová akce · chg zrušení/změna · res výsledek · coach trenér nepřijde
+alter table public.notifications add column if not exists kind text;
+alter table public.notifications drop constraint if exists notifications_aud_check;
+alter table public.notifications add constraint notifications_aud_check check (aud in ('a','T','V','C','P','K','U','H'));
 create table if not exists public.notification_reads (
   notif_id bigint not null references public.notifications(id) on delete cascade,
   user_id  uuid   not null default auth.uid() references public.profiles(id) on delete cascade,
@@ -247,6 +252,17 @@ $$ select coalesce((select role = 'a' from public.profiles where id = auth.uid()
 create or replace function public.is_head() returns boolean
 language sql stable security definer set search_path = public as
 $$ select coalesce((select role = 's' from public.profiles where id = auth.uid()), false) $$;
+
+-- Chce šéftrenér mládeže uid upozornění druhu k z kategorie t? (Nastavení → user_prefs.notif.hd = {"teams":["U9"],"exc":false,"new":true,…})
+-- plpgsql: tabulka user_prefs vzniká až níže v souboru
+create or replace function public.head_wants(uid uuid, t text, k text) returns boolean
+language plpgsql stable security definer set search_path = public as
+$$ declare h jsonb; begin
+  if uid is null or t is null or k is null then return false; end if;
+  select up.notif -> 'hd' into h from public.user_prefs up join public.profiles p on p.id = up.user_id
+   where up.user_id = uid and p.role = 's';
+  return h is not null and jsonb_typeof(h -> 'teams') = 'array' and (h -> 'teams') ? t and coalesce(h ->> k, 'false') = 'true';
+end $$;
 
 -- Má přihlášený rodič aspoň jedno dítě v kategorii?
 create or replace function public.parent_has_team(t text) returns boolean
@@ -462,6 +478,8 @@ $$ select distinct u from (
                where n.aud = 'P' and pl.team = n.team
      union all select pp.parent_id from public.parent_players pp join public.players pl on pl.id = pp.player_id
                where n.aud = 'K' and pl.short_name = n.kid
+     union all select p.id from public.profiles p                      -- šéftrenéři mládeže podle svého nastavení
+               where n.aud in ('C','V','H') and p.role = 's' and public.head_wants(p.id, n.team, n.kind)
    ) x where u is not null and u is distinct from n.by_user $$;
 
 -- Po vložení notifikace odešle (pokud je nastavená) Edge Function send-push přes pg_net.
@@ -957,7 +975,8 @@ create policy dm_select on public.direct_messages for select to authenticated us
 create policy dm_insert on public.direct_messages for insert to authenticated with check (from_id = (select auth.uid()) and public.dm_can_send((select auth.uid()), to_id));
 
 -- notifikace
-create policy notif_select on public.notifications for select to authenticated using (public.notif_visible(aud, to_user, team, kid));
+create policy notif_select on public.notifications for select to authenticated using (public.notif_visible(aud, to_user, team, kid)
+  or (aud in ('C','V','H') and public.head_wants((select auth.uid()), team, kind)));
 create policy notif_insert on public.notifications for insert to authenticated with check (
   by_user = (select auth.uid()) and (
     (select public.is_mgmt())
@@ -1593,6 +1612,67 @@ drop policy if exists creact_delete on public.chat_reactions;
 create policy creact_delete on public.chat_reactions for delete to authenticated using (user_id = (select auth.uid()));
 
 -- ---------------------------------------------------------------------
+-- Upozornění pro šéftrenéra mládeže (vybrané kategorie a druhy, viz head_wants)
+-- Nové akce, zrušení/změny a výsledky hlásí databáze sama (nezáleží na tom, zda trenér upozornil rodiče).
+-- ---------------------------------------------------------------------
+create or replace function public.notifications_kind() returns trigger
+language plpgsql security definer set search_path = public as
+$$ begin
+  if new.kind is null then
+    new.kind := case when new.text like '🩹%' then 'exc' when new.text like '⚠ Trenér%' then 'coach' end;   -- omluvy a nepřítomnost trenéra posílá aplikace
+  end if;
+  return new;
+end $$;
+drop trigger if exists notifications_kind on public.notifications;
+create trigger notifications_kind before insert on public.notifications
+  for each row execute function public.notifications_kind();
+
+create or replace function public.head_notify(t text, k text, txt text, tb text) returns void
+language plpgsql security definer set search_path = public as
+$$ begin
+  if exists (select 1 from public.profiles p where p.role = 's' and public.head_wants(p.id, t, k)) then   -- bez zájemců nic nevzniká
+    insert into public.notifications (aud, team, text, tab, kind) values ('H', t, txt, tb, k);
+  end if;
+end $$;
+
+create or replace function public.events_head_notify() returns trigger
+language plpgsql security definer set search_path = public as
+$$ declare what text; tb text; d text; begin
+  what := case when new.kind = 't' then 'Trénink' when new.tour then 'Turnaj ' || new.opponent else 'Zápas vs. ' || new.opponent end;
+  tb := case when new.kind = 't' then 'att' else 'ev' end;
+  d := to_char(new.event_date, 'FMDD.FMMM.') || coalesce(' v ' || nullif(new.time, ''), '');
+  if tg_op = 'INSERT' then
+    if new.plan_id is null and not new.cancelled then                  -- tréninky z rozvrhu hřišť se nehlásí
+      perform public.head_notify(new.team, 'new', '📅 Nový ' || lower(left(what, 1)) || substr(what, 2) || ' ' || d || ' (' || new.team || ')', tb);
+    end if;
+  elsif new.cancelled is distinct from old.cancelled then
+    perform public.head_notify(new.team, 'chg', case when new.cancelled then '❌ ' || what || ' ' || d || ' (' || new.team || ') je zrušen'
+                                                     else '↩ ' || what || ' ' || d || ' (' || new.team || ') zase platí' end, tb);
+  elsif not new.cancelled and (new.event_date is distinct from old.event_date or new.time is distinct from old.time) then
+    perform public.head_notify(new.team, 'chg', '🕒 Změna: ' || what || ' je nově ' || d || ' (' || new.team || ')', tb);
+  elsif new.finished and not old.finished and new.tour then
+    perform public.head_notify(new.team, 'res', '🏅 ' || what || ' (' || new.team || ') je odehraný', 'ev');
+  end if;
+  return null;
+end $$;
+drop trigger if exists events_head_notify on public.events;
+create trigger events_head_notify after insert or update on public.events
+  for each row execute function public.events_head_notify();
+
+create or replace function public.results_head_notify() returns trigger
+language plpgsql security definer set search_path = public as
+$$ begin
+  perform public.head_notify(new.team, 'res', '🏁 Výsledek ' || new.team || ': ' || case when new.home
+      then 'Unie Hlubina ' || new.score_us || ':' || new.score_them || ' ' || new.opponent
+      else new.opponent || ' ' || new.score_them || ':' || new.score_us || ' Unie Hlubina' end, 'ev');
+  return null;
+end $$;
+drop trigger if exists results_head_notify on public.results;
+create trigger results_head_notify after insert on public.results
+  for each row execute function public.results_head_notify();
+
+
+-- ---------------------------------------------------------------------
 -- 5. OPRÁVNĚNÍ ROLÍ (RLS je filtruje; anon nemá k datům přístup)
 -- ---------------------------------------------------------------------
 grant usage on schema public to anon, authenticated;
@@ -1615,6 +1695,7 @@ end $$;
 revoke execute on function public.coach_pre_training_summary(), public.flush_push_queue(), public.note_reminders(),
   public.purge_client_errors(), public.purge_chats() from authenticated;
 revoke all on public.push_queue from authenticated;
+revoke execute on function public.head_notify(text, text, text, text) from public, anon, authenticated;   -- upozornění šéftrenérům vkládá jen databáze
 grant execute on function public.keepalive(), public.login_config() to anon;
 alter default privileges in schema public revoke execute on functions from public, anon;
 alter default privileges in schema public revoke truncate, references, trigger on tables from anon, authenticated;
