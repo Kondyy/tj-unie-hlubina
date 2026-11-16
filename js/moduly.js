@@ -346,28 +346,29 @@ class Attendance {
     const e = trainings.find(x => x.id == UI.attEvent), count = Model.membersOf(team).length;
     const se = UI.subEvent && DB.events.find(x => x.id == UI.subEvent && x.sc == UI.user.id);
     if (se) return SubCoach.detail(se);                               // zástup za trenéra jiné kategorie
+    const ro = Model.ro(UI.user);                                     // šéftrenér mládeže: jen ke čtení
     if (!e) {                                                         // 1) seznam tréninků
       UI.attEvent = 0;
-      return `${Dnes.coach(team)}${Attendance.mine()}${OfflineQ.badge()}${SubCoach.list()}<h2>Tréninky ${team}</h2>${Week.bar()}<div class="g2">${trainings.map(t => {
+      return `${Dnes.coach(team)}${ro ? '' : Attendance.mine() + OfflineQ.badge() + SubCoach.list()}<h2>Tréninky ${team}</h2>${Week.bar()}<div class="g2">${trainings.map(t => {
         const k = Attendance.marked(t);
         return `<div class="card ev ${t.x ? 'x' : 't'}" ${t.x ? '' : `style="cursor:pointer" onclick="Attendance.open('${t.id}')"`}>
           <div class="pay"><b>⚽ ${Util.date(t.d)} · ${Util.timeRange(t)}</b><span class="pill ${t.x ? 'x' : k == count ? 'ok' : 'wa'}">${t.x ? 'Zrušeno' : k + '/' + count + ' označeno'}</span></div>
           <div class="mut">📍 ${esc(t.pl)}${t.sc ? ' · 🙋 zástup: ' + esc(t.c) : ''}</div>${Weather.line(t)}${t.x ? '' : '<div class="mut">Klepnutím otevřete docházku →</div>'}
           <div class="row" style="margin-top:8px"><button class="btn" onclick="event.stopPropagation();Events.cancel('${t.id}')">${t.x ? 'Obnovit trénink' : 'Zrušit trénink'}</button><button class="btn" style="flex:none;color:var(--r)" onclick="event.stopPropagation();Events.remove('${t.id}')">🗑 Smazat</button></div></div>`;
-      }).join('') || Week.empty() || Look.empty('ball', 'Zatím žádné tréninky', 'V tomto týdnu zatím žádný trénink. Tréninky se přidají automaticky podle rozvrhu hřišť, který nastavuje vedení, nebo je přidejte ručně níže.')}</div>
-      <h2>+ Přidat trénink ručně</h2><div class="card">
+      }).join('') || Week.empty() || Look.empty('ball', 'Zatím žádné tréninky', ro ? 'V tomto týdnu zatím žádný trénink.' : 'V tomto týdnu zatím žádný trénink. Tréninky se přidají automaticky podle rozvrhu hřišť, který nastavuje vedení, nebo je přidejte ručně níže.')}</div>
+      ${ro ? '' : `<h2>+ Přidat trénink ručně</h2><div class="card">
         <div class="row"><select id="tr-day">${CONFIG.days.map((n, i) => `<option value="${i}">${Util.date(i)}</option>`).join('')}</select>
         </div>
         <div class="row"><label class="mut">Od<input id="tr-time" type="time" value="16:00" step="300"></label><label class="mut">Do<input id="tr-end" type="time" value="17:30" step="300"></label></div>
         ${Venues.select('tr-place')}
         <label class="pl"><span>🔔 Upozornit rodiče na nový trénink</span><input id="tr-notify" type="checkbox"></label>
-        <button class="btn ok" style="width:100%" onclick="Events.add('t')">Přidat trénink</button></div>`;
+        <button class="btn ok" style="width:100%" onclick="Events.add('t')">Přidat trénink</button></div>`}`;
     }
     return `<button class="btn back" onclick="Attendance.close()">← Tréninky</button>        <!-- 2) detail tréninku -->
       <h2>${Util.date(e.d)} · ${Util.timeRange(e)} · ${esc(e.pl)}</h2>${Weather.line(e)}${Attendance.coachCard(e)}
       <div class="row" style="margin-top:10px">${Events.notifyBtn(e)}</div>${Events.timeBox(e)}${Venues.placeBox(e)}${OfflineQ.badge()}${Attendance.answers(e)}
       <button class="btn ok" style="width:100%;margin-top:10px" onclick="Attendance.allPresent(${e.id})">✔ Všichni ostatní přítomni</button>
-      ${!AttGrid.isList() ? AttGrid.view(e) : `<button class="btn" style="width:100%;margin-top:10px" onclick="AttGrid.setList(false)">📷 Mřížka fotek (rychlé klepání)</button>
+      ${!AttGrid.isList() || ro ? AttGrid.view(e) : `<button class="btn" style="width:100%;margin-top:10px" onclick="AttGrid.setList(false)">📷 Mřížka fotek (rychlé klepání)</button>
       <div class="g2" style="margin-top:10px">${Model.membersOf(team).map(m => {
         const a = DB.att[e.id + '|' + m.n], p = Model.attPct(m), [ps, tt] = Model.attCount(m);
         return `<div class="card"><div style="display:flex;gap:10px;align-items:center">${Util.avatar(m, 40)}
@@ -403,6 +404,8 @@ class Attendance {
   }
 
   static coachCard(e, inline) {
+    if (Model.ro(UI.user)) return `<div class="${inline ? '' : 'card'}" style="${inline ? 'margin-top:10px' : ''}"><b>👤 Trenéři</b>
+      <div class="mut" style="margin-top:4px">Přijdou trenéři: <b>${esc(Model.coachSurnames(e) || '—')}</b></div></div>`;   // šéftrenér: jen kdo přijde
     const v = DB.coachAtt[UI.user.id + '|' + e.id];
     return `<div class="${inline ? '' : 'card'}" style="${inline ? 'margin-top:10px' : ''}">
       <div class="pay"><b>👤 Moje účast (trenér)</b>${v ? `<span class="pill ${v == 'y' ? 'ok' : 'no'}">${v == 'y' ? 'Přijdu' : 'Nemohu'}</span>` : ''}</div>
@@ -452,7 +455,7 @@ class Events {
           <div class="mut">${m.m ? `<b class="srz">🤝 Sraz ${esc(m.m)}</b> · výkop ` : ''}${esc(m.t)} · 📍 ${esc(m.pl)}</div>
           <div class="mut">${m.fin ? '🏁 ' + (res ? Events.score(res) + ' · ' : '') + 'ukončeno · hrálo ' + m.lu.length + ' hráčů'
             : m.tour ? (Tour.games(m).length ? '🏁 ' + Tour.games(m).length + ' utkání' + (m.rank ? ' · ' + esc(m.rank) + '. místo' : '') : 'Klepnutím otevřete turnaj →') : res ? '🏁 ' + Events.score(res) : noms ? (m.nc ? '🔒 Nominace uzavřena' : 'Nominace rozpracována') + ' · ' + noms + ' hráčů · ' + Events.confirmSummary(m) : 'Klepnutím otevřete zápas →'}</div></div>`;
-      }).join('') || Week.empty() || Look.empty('trophy', 'Zatím žádné zápasy', 'V tomto týdnu zatím žádný zápas. Přidejte ho formulářem níže.')}</div>${Events.form()}`;
+      }).join('') || Week.empty() || Look.empty('trophy', 'Zatím žádné zápasy', Model.ro(UI.user) ? 'V tomto týdnu zatím žádný zápas.' : 'V tomto týdnu zatím žádný zápas. Přidejte ho formulářem níže.')}</div>${Model.ro(UI.user) ? '' : Events.form()}`;
     }
     if (UI.closeEvent == e.id && UI.cl) return Events.closeView(e);                     // ukončení zápasu: docházka + výsledek
     if (e.fin && !e.x) return `<button class="btn back" onclick="Events.closeMatch()">← Zápasy</button>${Events.resultView(e, true)}`;   // ukončený zápas = výsledek
@@ -472,7 +475,7 @@ class Events {
         ${e.x ? '' : Carpool.list(e)}</div>
       ${e.x || !e.tour ? '' : Tour.box(e)}${ResultImg.forEvent(e)}
       ${e.x ? '' : Events.confirmBox(e) + Bring.coach(e) + SubCoach.card(e)}
-      ${e.x ? '' : `<button class="btn ok" style="width:100%;margin-top:10px" onclick="Events.startClose(${e.id})">🏁 Ukončit ${e.tour ? 'turnaj' : 'zápas'}</button>
+      ${e.x || Model.ro(UI.user) ? '' : `<button class="btn ok" style="width:100%;margin-top:10px" onclick="Events.startClose(${e.id})">🏁 Ukončit ${e.tour ? 'turnaj' : 'zápas'}</button>
         <div class="mut" style="margin-top:6px">Po zápase potvrdíte, kdo přišel${e.tour ? '' : ', a zapíšete skóre se střelci'}. Okno zápasu se pak změní na výsledek.</div>`}`;
   }
   static openMatch(id) { UI.matchEvent = id; UI.nomEvent = 0; UI.resEvent = 0; UI.resEdit = 0; UI.meetEdit = 0; UI.closeEvent = 0; UI.cl = null; App.render(); }
@@ -1370,7 +1373,7 @@ class Chat {
     const ct = team.startsWith('T-');                                  // interní chat trenérů kategorie
     return `<div class="card"><div class="pay"><b>${ct ? '🔒 Chat trenérů ' + team.slice(2) : '💬 Chat ' + team}</b><span class="mut">${ct ? 'jen trenéři kategorie ' + team.slice(2) : 'trenéři a rodiče kategorie ' + team}</span></div>
       <div class="chat" id="chat-box" data-k="${esc(team)}" style="margin-top:10px">${Model.chat(team).map(m => `<div class="bub ${m.fid == u.id ? 'me' : ''}">
-        <div class="nm"><b>${esc(m.f)}</b>${m.role == 'Trenér' ? '<span class="pill ok">Trenér</span>' : ''}</div>${esc(m.x)}${Chat.foot(m, u)}</div>`).join('') || `<div class="empty" style="padding:14px"><div class="eic">${Icons.svg('chat')}</div><b>Zatím žádné zprávy</b><div class="mut">Napište první zprávu – uvidí ji ${ct ? 'trenéři' : 'trenéři a rodiče'} kategorie.</div></div>`}</div>
+        <div class="nm"><b>${esc(m.f)}</b>${m.role == 'Trenér' || m.role == 'Šéftrenér' ? `<span class="pill ok">${esc(m.role)}</span>` : ''}</div>${esc(m.x)}${Chat.foot(m, u)}</div>`).join('') || `<div class="empty" style="padding:14px"><div class="eic">${Icons.svg('chat')}</div><b>Zatím žádné zprávy</b><div class="mut">Napište první zprávu – uvidí ji ${ct ? 'trenéři' : 'trenéři a rodiče'} kategorie.</div></div>`}</div>
       <div class="cin"><input id="chat-input" autocomplete="off" placeholder="Napište zprávu…" onkeydown="if(event.key==='Enter')Chat.send()"><button class="btn ok" onclick="Chat.send()">Odeslat</button></div>${Tpl.chips()}</div>`;
   }
 
@@ -1438,7 +1441,7 @@ document.addEventListener('click', e => { if (UI.rxOpen && !e.target.closest('.r
    Oprávnění hlídá databáze (dm_can_send, dm_contacts); aplikace jen zobrazuje seznam povolených kontaktů.
    --------------------------------------------------------------------- */
 class Dm {
-  static roleLabel(c) { return c.cp ? 'Rodič (spolujízda)' : c.role == 'c' ? 'Trenér ' + (c.team || '') : c.role == 'p' ? 'Rodič' : c.role == 'a' ? 'Správce' : 'Vedení'; }
+  static roleLabel(c) { return c.cp ? 'Rodič (spolujízda)' : c.role == 'c' ? 'Trenér ' + (c.team || '') : c.role == 'p' ? 'Rodič' : c.role == 'a' ? 'Správce' : c.role == 's' ? 'Šéftrenér mládeže' : 'Vedení'; }
 
   /** Komu lze psát: seznam z databáze; kdyby se nenačetl, odvodí se z viditelných účtů (odeslání stejně hlídá databáze). */
   static contacts() {
@@ -1452,7 +1455,7 @@ class Dm {
     const teamOf = id => (Model.byId(id) || {}).t;
     const kidTeams = new Set(DB.links.filter(l => l.parent_id == u.id).map(l => teamOf(l.player_id)).filter(Boolean));
     const parentsOf = t => new Set(DB.links.filter(l => teamOf(l.player_id) == t).map(l => l.parent_id));
-    return Object.values(DB.users).filter(x => x.id != u.id && (u.r == 'v' || u.r == 'a' ? true : u.r == 'c' ? (x.r != 'p' || parentsOf(u.team).has(x.id)) : (x.r == 'c' && kidTeams.has(x.team))))
+    return Object.values(DB.users).filter(x => x.id != u.id && (u.r == 'v' || u.r == 'a' || u.r == 's' ? true : u.r == 'c' ? (x.r != 'p' || parentsOf(u.team).has(x.id)) : (x.r == 'c' && kidTeams.has(x.team))))
       .map(x => ({id: x.id, name: x.name, role: x.r, team: x.team})).sort((a, b) => a.name.localeCompare(b.name, 'cs'));
   }
 
@@ -1628,7 +1631,7 @@ class Planner {
    přiřazení dětí rodičům se ukládá přímo do tabulky parent_players (smí jen vedení).
    --------------------------------------------------------------------- */
 class Users {
-  static roleOptions(sel) { return Object.entries(CONFIG.roles).filter(([k]) => UI.user.r == 'a' || k == 'p' || k == 'c' || k == sel).map(([k, l]) => `<option value="${k}" ${k == sel ? 'selected' : ''}>${l}</option>`).join(''); }
+  static roleOptions(sel) { return Object.entries(CONFIG.roles).filter(([k]) => UI.user.r == 'a' || k == 'p' || k == 'c' || k == 's' || k == sel).map(([k, l]) => `<option value="${k}" ${k == sel ? 'selected' : ''}>${l}</option>`).join(''); }
   static teamOptions(sel) { return CONFIG.planner.teams.map(x => `<option ${x == sel ? 'selected' : ''}>${x}</option>`).join(''); }
 
   static view() {
@@ -1643,14 +1646,14 @@ class Users {
         <button class="btn ok" style="width:100%;margin-top:8px" onclick="Users.create()">Vytvořit účet</button>
         ${UI.userMsg ? `<div class="mut ${UI.userMsgOk ? 'cg' : 'cr'}" style="margin-top:6px">${esc(UI.userMsg)}</div>` : ''}</div>
       <h2>Registrovaní uživatelé (${list.length})</h2>
-      <div class="row" style="margin-bottom:8px">${[['all', 'Všichni'], ['p', 'Rodiče'], ['c', 'Trenéři'], ['v', 'Vedení'], ['a', 'Správci']].map(([k, l]) => `<button class="chip ${UI.userRole == k ? 'on' : ''}" onclick="Users.filter('${k}')">${l}</button>`).join('')}</div>
+      <div class="row" style="margin-bottom:8px">${[['all', 'Všichni'], ['p', 'Rodiče'], ['c', 'Trenéři'], ['s', 'Šéftrenéři'], ['v', 'Vedení'], ['a', 'Správci']].map(([k, l]) => `<button class="chip ${UI.userRole == k ? 'on' : ''}" onclick="Users.filter('${k}')">${l}</button>`).join('')}</div>
       ${list.map(x => Users.card(x)).join('') || '<div class="card mut">Žádní uživatelé.</div>'}</div>`;
   }
 
   /** Karta uživatele: údaje, přiřazené děti (rodič), tlačítka Upravit / Smazat, případně editor. */
   static card(x) {
     const me = x.id == UI.user.id, canEdit = UI.user.r == 'a' || !(x.r == 'v' || x.r == 'a');   // účty vedení a správců upravuje jen správce
-    return `<div class="card"><div class="pay" style="flex-wrap:wrap;gap:8px"><div style="min-width:0;flex:1 1 230px"><div style="display:flex;gap:12px;align-items:center;margin-bottom:6px">${Util.userAvatar(x, 64)}<span style="min-width:0"><b>${esc(x.name)}</b> <span class="pill ${x.r == 'a' ? 'no' : x.r == 'v' ? 'z' : x.r == 'c' ? 'ok' : 'wa'}">${x.role}${x.team ? ' ' + esc(x.team) : ''}</span></span></div>
+    return `<div class="card"><div class="pay" style="flex-wrap:wrap;gap:8px"><div style="min-width:0;flex:1 1 230px"><div style="display:flex;gap:12px;align-items:center;margin-bottom:6px">${Util.userAvatar(x, 64)}<span style="min-width:0"><b>${esc(x.name)}</b> <span class="pill ${x.r == 'a' ? 'no' : x.r == 'v' ? 'z' : x.r == 'c' || x.r == 's' ? 'ok' : 'wa'}">${x.role}${x.team ? ' ' + esc(x.team) : ''}</span></span></div>
         <div class="mut" style="overflow-wrap:anywhere">${esc(x.email)}${x.phone ? ' · ☎ ' + esc(x.phone) : ''}${x.mc ? ' · <span class="cr">čeká na změnu hesla</span>' : ''}${x.consent ? '' : ' · <span class="mut">bez souhlasu</span>'}</div></div>
         ${canEdit ? `<div class="row" style="flex:none"><button class="chip" style="flex:none" onclick="Users.edit('${x.id}')">✏ Upravit</button>
           ${me ? '' : `<button class="chip" style="flex:none;color:var(--r)" onclick="Users.remove('${x.id}')">🗑 Smazat</button>`}</div>` : ''}</div>
@@ -1871,10 +1874,11 @@ class Parents {
 
   static view() {
     const kids = Parents.kids(), sel = UI.pkSel || {};
-    const q = Util.norm(UI.parSearch || ''), all = Object.values(DB.users).filter(x => x.r == 'p');
+    const ro = Model.ro(UI.user), kidIds = new Set(kids.map(m => m.id));             // šéftrenér vidí rodiče všech kategorií → jen zvolená kategorie
+    const q = Util.norm(UI.parSearch || ''), all = Object.values(DB.users).filter(x => x.r == 'p' && (!ro || DB.links.some(l => l.parent_id == x.id && kidIds.has(l.player_id))));
     const kidsOf = x => DB.links.filter(l => l.parent_id == x.id).map(l => (Model.byId(l.player_id) || {}).full || '').join(' ');
     const list = all.filter(x => !q || Util.norm(x.name + ' ' + x.email + ' ' + kidsOf(x) + ' ' + DB.links.filter(l => l.parent_id == x.id).map(l => (Model.byId(l.player_id) || {}).n || '').join(' ')).includes(q));
-    return `<div class="col">
+    return `<div class="col">${ro ? '' : `
       <div class="card"><b>➕ Nový účet rodiče (${esc(UI.user.team)})</b>
         <div class="mut" style="margin-top:4px">Rodič se přihlásí e-mailem a počátečním heslem a po přihlášení si heslo sám změní.</div>
         <label class="mut">Jméno rodiče<input id="pa-name" autocomplete="off" placeholder="např. Petr Kovář"></label>
@@ -1883,8 +1887,8 @@ class Parents {
         <div class="mut" style="margin-top:8px">Děti rodiče (můžete vybrat více):</div>
         <div style="max-height:200px;overflow:auto;margin-top:4px">${kids.map(m => `<label style="display:flex;gap:8px;align-items:center;padding:4px 0"><input type="checkbox" style="width:auto;margin:0" ${sel[m.id] ? 'checked' : ''} onchange="Parents.toggle('${m.id}',this.checked)"> ${esc(m.full || m.n)}</label>`).join('') || '<div class="mut">V soupisce zatím nejsou žádní hráči.</div>'}</div>
         <button class="btn ok" style="width:100%;margin-top:8px" onclick="Parents.create()">Vytvořit účet rodiče</button>
-        ${UI.parMsg ? `<div class="mut ${UI.parOk ? 'cg' : 'cr'}" style="margin-top:6px">${esc(UI.parMsg)}</div>` : ''}</div>
-      <h2>Rodiče vaší kategorie (${q ? list.length + ' z ' + all.length : all.length})</h2>
+        ${UI.parMsg ? `<div class="mut ${UI.parOk ? 'cg' : 'cr'}" style="margin-top:6px">${esc(UI.parMsg)}</div>` : ''}</div>`}
+      <h2>Rodiče ${ro ? 'kategorie ' + esc(UI.user.team) : 'vaší kategorie'} (${q ? list.length + ' z ' + all.length : all.length})</h2>
       <input id="pa-search" type="search" placeholder="🔍 Hledat podle jména rodiče, dítěte nebo e-mailu…" value="${esc(UI.parSearch || '')}" oninput="Parents.search(this.value)">
       ${list.map(x => Parents.card(x, kids)).join('') || `<div class="card mut">${q ? 'Nikdo nenalezen.' : 'Zatím žádní rodiče s účtem.'}</div>`}</div>`;
   }
@@ -2417,7 +2421,7 @@ class Settings {
   static view() {
     // Hlavní vypínač je jen tlačítko zařízení (Push.profileBlock); starý přepínač „Upozornění zapnutá“ (klíč 'all') se už nezobrazuje
     const u = UI.user, P = DB.prefs || {}, on = k => P.all !== false && P[k] !== false;
-    const cats = Settings.CATS.filter(([k]) => !(k == 'chat' && u.r == 'v') && !(k == 'pay' && u.r == 'c'));
+    const cats = Settings.CATS.filter(([k]) => !(k == 'chat' && u.r == 'v') && !(k == 'pay' && (u.r == 'c' || u.r == 's')));
     return `<div class="col">
       <div class="card"><b>🔔 Upozornění v telefonu</b>
         ${Push.profileBlock(true)}
@@ -2427,15 +2431,15 @@ class Settings {
         ${Settings.quiet()}
         ${UI.setMsg ? `<div class="${UI.setOk ? 'cg' : 'warn'}" style="margin-top:8px">${esc(UI.setMsg)}</div>` : ''}</div>
       ${Theme.card()}
-      ${Settings.chatRetention()}
+      ${u.r == 's' ? '' : Settings.chatRetention()}
       ${Settings.calendar()}
       ${u.r == 'v' ? '' : Tpl.card()}
-      ${u.r == 'p' ? '' : Venues.adminCard()}
+      ${u.r == 'p' || u.r == 's' ? '' : Venues.adminCard()}
       ${Report.card()}
       <div class="card"><b>📤 Export statistik do Excelu</b>
         <div class="mut">${u.r == 'p' ? 'Docházka a statistiky vašeho dítěte.' : u.r == 'c' ? 'Docházka hráčů a trenérů vaší kategorie a výsledky zápasů.' : 'Docházka hráčů a trenérů všech kategorií a výsledky zápasů.'}</div>
         <button class="btn ok" style="width:100%;margin-top:8px" onclick="Settings.export()">⬇ Stáhnout Excel</button></div>
-      ${u.r == 'p' ? '' : AttImport.view()}</div>`;
+      ${u.r == 'p' || u.r == 's' ? '' : AttImport.view()}</div>`;
   }
 
   /** Noční klid: v nastavených hodinách push nepřijde hned, ale ráno jako jeden souhrn (výchozí 22–7). */

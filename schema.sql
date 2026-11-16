@@ -8,7 +8,8 @@
 --       (účty zakládá pouze správce přes Edge Function admin-users).
 --    3) Vytvořte prvního správce (viz KONEC SOUBORU).
 --
---  ROLE (sloupec profiles.role):  p = rodič,  c = trenér,  v = vedení/správce
+--  ROLE (sloupec profiles.role):  p = rodič,  c = trenér,  v = vedení,  a = správce,
+--                                  s = šéftrenér mládeže (vidí vše jako trenér, ve všech kategoriích, ale nic neupravuje)
 --
 --  OPRÁVNĚNÍ (vynucuje databáze přes Row Level Security – ne jen aplikace):
 --    rodič   – vidí jen své přiřazené děti + události/zápasy/chat jejich kategorie
@@ -26,7 +27,7 @@ create table if not exists public.profiles (
   id         uuid primary key references auth.users(id) on delete cascade,
   email      text,
   name       text not null default '',
-  role       text not null default 'p' check (role in ('p','c','v','a')),
+  role       text not null default 'p' check (role in ('p','c','v','a','s')),
   team       text,                                   -- kategorie trenéra (U7, U9…)
   created_at timestamptz not null default now()
 );
@@ -242,6 +243,11 @@ create or replace function public.is_admin() returns boolean
 language sql stable security definer set search_path = public as
 $$ select coalesce((select role = 'a' from public.profiles where id = auth.uid()), false) $$;
 
+-- Šéftrenér mládeže (role 's'): čte vše jako trenér, a to ve všech kategoriích; tréninky, zápasy ani docházku neupravuje
+create or replace function public.is_head() returns boolean
+language sql stable security definer set search_path = public as
+$$ select coalesce((select role = 's' from public.profiles where id = auth.uid()), false) $$;
+
 -- Má přihlášený rodič aspoň jedno dítě v kategorii?
 create or replace function public.parent_has_team(t text) returns boolean
 language sql stable security definer set search_path = public as
@@ -251,7 +257,7 @@ $$ select exists (select 1 from public.parent_players pp join public.players pl 
 -- Smí přihlášený uživatel vidět kategorii (události, zápasy)?
 create or replace function public.can_see_team(t text) returns boolean
 language sql stable security definer set search_path = public as
-$$ select public.is_mgmt()
+$$ select public.is_mgmt() or public.is_head()
        or (public.app_role() = 'c' and public.app_team() = t)
        or (public.app_role() = 'p' and public.parent_has_team(t)) $$;
 
@@ -261,12 +267,13 @@ language sql stable security definer set search_path = public as
 $$ select (public.app_role() = 'c' and public.app_team() = t)
        or (public.app_role() = 'c' and t = 'T-' || public.app_team())       -- interní chat trenérů kategorie (team = 'T-U9')
        or public.is_admin()                                                  -- správce smí do všech chatů
+       or public.is_head()                                                   -- šéftrenér mládeže také (chat není úprava tréninků)
        or (public.app_role() = 'p' and public.parent_has_team(t)) $$;
 
 -- Smí přihlášený uživatel vidět hráče?
 create or replace function public.can_see_player(pid uuid) returns boolean
 language sql stable security definer set search_path = public as
-$$ select public.is_mgmt()
+$$ select public.is_mgmt() or public.is_head()
        or exists (select 1 from public.players pl where pl.id = pid and public.app_role() = 'c' and pl.team = public.app_team())
        or exists (select 1 from public.parent_players pp where pp.player_id = pid and pp.parent_id = auth.uid()) $$;
 
@@ -281,7 +288,7 @@ create or replace function public.notif_visible(p_aud text, p_to uuid, p_team te
 language sql stable security definer set search_path = public as
 $$ select p_to = auth.uid()
        or p_aud = 'a'
-       or (p_aud = 'T' and public.app_role() = 'c')
+       or (p_aud = 'T' and public.app_role() in ('c','s'))
        or (p_aud = 'V' and public.app_role() in ('v','a'))
        or (p_aud = 'C' and public.app_role() = 'c' and public.app_team() = p_team)
        or (p_aud = 'P' and public.app_role() = 'p' and public.parent_has_team(p_team))
@@ -529,7 +536,7 @@ $$ declare p public.profiles; begin
   select * into p from public.profiles where id = auth.uid();
   new.sender_id   := auth.uid();
   new.sender_name := p.name;
-  new.sender_role := case p.role when 'c' then 'Trenér' when 'p' then 'Rodič' else 'Vedení' end;
+  new.sender_role := case p.role when 'c' then 'Trenér' when 's' then 'Šéftrenér' when 'p' then 'Rodič' else 'Vedení' end;
   return new;
 end $$;
 drop trigger if exists chat_before_insert on public.chat_messages;
@@ -635,7 +642,7 @@ language sql stable security definer set search_path = public as
 $$ select a is distinct from b and exists (
      select 1 from public.profiles pa, public.profiles pb where pa.id = a and pb.id = b and (
           (pa.role <> 'p' and pb.role <> 'p')                                                      -- trenéři, vedení, správci mezi sebou
-       or (pa.role in ('v','a') and pb.role = 'p')                                                  -- vedení/správce rodičům
+       or (pa.role in ('v','a','s') and pb.role = 'p')                                              -- vedení/správce/šéftrenér rodičům
        or (pa.role = 'c' and pb.role = 'p' and public.parent_in_team(b, pa.team))                   -- trenér rodičům své kategorie
        or (pa.role = 'p' and pb.role = 'c' and public.parent_in_team(a, pb.team))                   -- rodič trenérům kategorie svého dítěte
        or (pa.role = 'p' and exists (select 1 from public.direct_messages d where d.from_id = b and d.to_id = a))   -- odpověď tomu, kdo rodiči napsal
@@ -647,7 +654,7 @@ create or replace function public.dm_contacts() returns table (id uuid, name tex
 language sql stable security definer set search_path = public as
 $$ select p.id, p.name, p.role, p.team from public.profiles p
     where p.id <> auth.uid()
-      and ( (public.app_role() in ('v','a'))
+      and ( (public.app_role() in ('v','a','s'))
          or (public.app_role() = 'c' and (p.role <> 'p' or public.parent_in_team(p.id, public.app_team())))
          or (public.app_role() = 'p' and p.role = 'c' and public.parent_in_team(auth.uid(), p.team)) )
     order by p.role, p.name $$;
@@ -833,7 +840,7 @@ create trigger plan_before_delete before delete on public.plan
 
 -- Role "trenér" musí mít kategorii
 alter table public.profiles drop constraint if exists profiles_role_check;
-alter table public.profiles add constraint profiles_role_check check (role in ('p','c','v','a'));
+alter table public.profiles add constraint profiles_role_check check (role in ('p','c','v','a','s'));
 alter table public.profiles drop constraint if exists profiles_coach_team;
 alter table public.profiles add constraint profiles_coach_team check (role <> 'c' or team is not null);
 
@@ -867,7 +874,7 @@ $$ begin
 end $$;
 
 -- profiles: každý vidí sebe, vedení vidí a upravuje všechny (zakládání/mazání jen přes Edge Function)
-create policy profiles_select on public.profiles for select to authenticated using (id = (select auth.uid()) or (select public.is_mgmt()) or public.coach_sees_parent(id));
+create policy profiles_select on public.profiles for select to authenticated using (id = (select auth.uid()) or (select public.is_mgmt()) or (select public.is_head()) or public.coach_sees_parent(id));
 create policy profiles_update on public.profiles for update to authenticated using ((select public.is_mgmt())) with check ((select public.is_mgmt()));
 
 -- kategorie a nastavení: čtou všichni přihlášení, píše vedení; app_config nemá žádné pravidlo (čtou jen databázové funkce)
@@ -881,7 +888,7 @@ create policy push_own        on public.push_subscriptions for all to authentica
 -- Pozn.: podmínky jsou zapsané přímo nad sloupci řádku (ne přes funkci can_see_player), aby šel hráč
 -- hned po vložení vrátit přes RETURNING – funkce by právě vložený řádek ještě neviděla.
 create policy players_select on public.players for select to authenticated using (
-  (select public.is_mgmt())
+  (select public.is_mgmt()) or (select public.is_head())
   or ((select public.app_role()) = 'c' and team = (select public.app_team()))
   or exists (select 1 from public.parent_players pp where pp.player_id = players.id and pp.parent_id = (select auth.uid())));
 select pg_temp.write_policies('players', 'players', '(select public.is_mgmt()) or ((select public.app_role()) = ''c'' and team = (select public.app_team()))');
@@ -889,10 +896,11 @@ select pg_temp.write_policies('players', 'players', '(select public.is_mgmt()) o
 -- soukromá poznámka trenéra: jen trenér kategorie a vedení
 create policy pcoach_all on public.player_coach for all to authenticated
   using (public.can_edit_player(player_id)) with check (public.can_edit_player(player_id));
+create policy pcoach_head on public.player_coach for select to authenticated using ((select public.is_head()));   -- šéftrenér jen čte
 
 -- parent_players: vedení spravuje, rodič vidí své;
 -- trenér přiřazuje děti ze své kategorie rodičům, které založil (nebo kteří už mají dítě v jeho týmu)
-create policy pp_select on public.parent_players for select to authenticated using (parent_id = (select auth.uid()) or (select public.is_mgmt()) or public.can_edit_player(player_id));
+create policy pp_select on public.parent_players for select to authenticated using (parent_id = (select auth.uid()) or (select public.is_mgmt()) or (select public.is_head()) or public.can_edit_player(player_id));
 create policy pp_insert on public.parent_players for insert to authenticated with check ((select public.is_mgmt()) or public.coach_can_link(parent_id, player_id));
 create policy pp_update on public.parent_players for update to authenticated using ((select public.is_mgmt())) with check ((select public.is_mgmt()));
 create policy pp_delete on public.parent_players for delete to authenticated using ((select public.is_mgmt()) or public.coach_can_link(parent_id, player_id));
@@ -910,8 +918,8 @@ select pg_temp.write_policies('results', 'results', '(select public.is_mgmt()) o
 
 -- docházka: čtení kdo vidí hráče; zápis rodič (své dítě) / trenér (svůj tým) / vedení
 create policy att_select on public.attendance for select to authenticated using (public.can_see_player(player_id));
-create policy att_insert on public.attendance for insert to authenticated with check (public.can_see_player(player_id));
-create policy att_update on public.attendance for update to authenticated using (public.can_see_player(player_id)) with check (public.can_see_player(player_id));
+create policy att_insert on public.attendance for insert to authenticated with check (public.can_see_player(player_id) and not (select public.is_head()));   -- šéftrenér docházku jen čte
+create policy att_update on public.attendance for update to authenticated using (public.can_see_player(player_id) and not (select public.is_head())) with check (public.can_see_player(player_id) and not (select public.is_head()));
 
 -- Je uživatel správce? (security definer: rodiče a trenéři profil správce jinak nevidí)
 create or replace function public.is_admin_user(uid uuid) returns boolean
@@ -930,7 +938,7 @@ select pg_temp.write_policies('nominations', 'nom', 'public.can_edit_player(play
 -- trenérský deník: pravidla jsou v doplňcích verze 4 (rodič vidí poznámky, které mu trenér zpřístupní)
 
 -- plánovač (rozvrh hřišť): čtení vedení + trenéři, zápis vedení
-create policy plan_select on public.plan for select to authenticated using ((select public.app_role()) in ('v','a','c'));
+create policy plan_select on public.plan for select to authenticated using ((select public.app_role()) in ('v','a','c','s'));
 select pg_temp.write_policies('plan', 'plan', '(select public.is_mgmt())');
 
 -- chat: jen členové kategorie
@@ -940,7 +948,7 @@ create policy chat_insert on public.chat_messages for insert to authenticated wi
 -- zprávy vedení
 create policy club_select on public.club_messages for select to authenticated using (
   (select public.is_mgmt()) or kind = 'all'
-  or (kind = 'trainers' and (select public.app_role()) = 'c')
+  or (kind = 'trainers' and (select public.app_role()) in ('c','s'))
   or (kind = 'user' and recipient_id = (select auth.uid())));
 create policy club_insert on public.club_messages for insert to authenticated with check ((select public.is_mgmt()));
 
@@ -1241,7 +1249,7 @@ alter table public.notes add column if not exists remind_on date;
 alter table public.notes add column if not exists done      boolean not null default false;
 drop policy if exists notes_select on public.notes;
 create policy notes_select on public.notes for select to authenticated using (
-  (select public.is_admin())
+  (select public.is_admin()) or (select public.is_head())
   or ((select public.app_role()) = 'c' and exists (select 1 from public.players pl where pl.id = player_id and pl.team = (select public.app_team())))
   or (shared and exists (select 1 from public.parent_players pp where pp.player_id = notes.player_id and pp.parent_id = (select auth.uid()))));
 drop policy if exists notes_insert on public.notes;
@@ -1307,10 +1315,14 @@ alter table public.event_plans enable row level security;
 alter table public.training_templates enable row level security;
 drop policy if exists eplan_all on public.event_plans;
 create policy eplan_all on public.event_plans for all to authenticated using (public.coach_of_event(event_id)) with check (public.coach_of_event(event_id));
+drop policy if exists eplan_head on public.event_plans;
+create policy eplan_head on public.event_plans for select to authenticated using ((select public.is_head()));   -- šéftrenér plány tréninků jen čte
 drop policy if exists ttpl_all on public.training_templates;
 create policy ttpl_all on public.training_templates for all to authenticated
   using ((select public.is_mgmt()) or ((select public.app_role()) = 'c' and team = (select public.app_team())))
   with check ((select public.is_mgmt()) or ((select public.app_role()) = 'c' and team = (select public.app_team())));
+drop policy if exists ttpl_head on public.training_templates;
+create policy ttpl_head on public.training_templates for select to authenticated using ((select public.is_head()));
 
 -- Diskuse u tréninku / zápasu (vidí ji, kdo vidí akci)
 create table if not exists public.event_comments (
@@ -1340,7 +1352,7 @@ language plpgsql security definer set search_path = public as
 $$ declare p public.profiles; begin
   select * into p from public.profiles where id = auth.uid();
   new.sender_id := auth.uid(); new.sender_name := coalesce(p.name, '');
-  new.sender_role := case p.role when 'p' then 'Rodič' when 'c' then 'Trenér' when 'a' then 'Správce' else 'Vedení' end;
+  new.sender_role := case p.role when 'p' then 'Rodič' when 'c' then 'Trenér' when 's' then 'Šéftrenér' when 'a' then 'Správce' else 'Vedení' end;
   return new;
 end $$;
 drop trigger if exists ecom_before_insert on public.event_comments;
