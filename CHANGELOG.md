@@ -6,6 +6,14 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 16. 11. 2026 (záložka Trenéři i pro správce)
+
+- Správce má také záložku **🧢 Trenéři** (hned za Docházkou): docházka trenérů za zvolený měsíc, přepínání měsíců šipkami, filtr kategorie a výkaz do Excelu.
+
+**V Supabase:** nic.
+
+---
+
 ## 16. 11. 2026 (upozornění pro šéftrenéra mládeže)
 
 - Šéftrenér mládeže si v **Nastavení → Upozornění z kategorií** vybere kategorie (např. jen U9 a U11) a co z nich chce dostávat: nové tréninky a zápasy, zrušení a změnu času, výsledky zápasů a turnajů, omluvenky hráčů a zprávu, že trenér nepřijde. Vše je ve výchozím stavu vypnuté.
