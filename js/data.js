@@ -217,7 +217,7 @@ class Auth {
     App.render();
   }
 
-  static async logout() { try { await sb.auth.signOut(); } catch (e) {} Photos.clear(); Offline.clear(); Auth.reset(); }
+  static async logout() { try { await sb.auth.signOut(); } catch (e) {} Photos.clear(); ChatFiles.clear(); Offline.clear(); Auth.reset(); }
 
   /** Vyčistí paměť aplikace a vrátí přihlašovací obrazovku. */
   static reset() {
@@ -261,6 +261,7 @@ class Sync {
       UI.offlineAt = 0; Sync.start(u);
       Sync.subscribe();
       setTimeout(() => Photos.migrate(), 1500);
+      setTimeout(() => ChatFiles.cleanup(), 8000);                    // správce: úklid souborů po smazaných zprávách
       Offline.save(); OfflineQ.flush();
     } catch (e) {
       console.error(e);
@@ -453,7 +454,7 @@ class Sync {
     dm: async () => {
       try {
         const rows = await Sync.last('direct_messages', 500);
-        DB.dm = rows.map(r => ({id: r.id, fid: r.from_id, tid: r.to_id, fn: r.from_name, tn: r.to_name, x: r.body, t: Util.stamp(r.created_at)}));
+        DB.dm = rows.map(r => ({id: r.id, fid: r.from_id, tid: r.to_id, fn: r.from_name, tn: r.to_name, x: r.body, a: r.att || null, t: Util.stamp(r.created_at)}));
       } catch (e) { DB.dm = []; }
       DB.dmErr = '';
       try {
@@ -489,7 +490,7 @@ class Sync {
     }
   };
 
-  static chatRow(r) { return {id: r.id, fid: r.sender_id, f: r.sender_name, role: r.sender_role, x: r.body, t: Util.stamp(r.created_at), ts: Date.parse(r.created_at)}; }
+  static chatRow(r) { return {id: r.id, fid: r.sender_id, f: r.sender_name, role: r.sender_role, x: r.body, a: r.att || null, t: Util.stamp(r.created_at), ts: Date.parse(r.created_at)}; }
 
   /** Jeden řádek docházky → DB.att (značka trenéra), DB.responses (omluva rodiče), DB.carpool */
   static applyAtt(r, m) {

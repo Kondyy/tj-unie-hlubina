@@ -1373,8 +1373,8 @@ class Chat {
     const ct = team.startsWith('T-');                                  // interní chat trenérů kategorie
     return `<div class="card"><div class="pay"><b>${ct ? '🔒 Chat trenérů ' + team.slice(2) : '💬 Chat ' + team}</b><span class="mut">${ct ? 'jen trenéři kategorie ' + team.slice(2) : 'trenéři a rodiče kategorie ' + team}</span></div>
       <div class="chat" id="chat-box" data-k="${esc(team)}" style="margin-top:10px">${Model.chat(team).map(m => `<div class="bub ${m.fid == u.id ? 'me' : ''}">
-        <div class="nm"><b>${esc(m.f)}</b>${m.role == 'Trenér' || m.role == 'Šéftrenér' ? `<span class="pill ok">${esc(m.role)}</span>` : ''}</div>${esc(m.x)}${Chat.foot(m, u)}</div>`).join('') || `<div class="empty" style="padding:14px"><div class="eic">${Icons.svg('chat')}</div><b>Zatím žádné zprávy</b><div class="mut">Napište první zprávu – uvidí ji ${ct ? 'trenéři' : 'trenéři a rodiče'} kategorie.</div></div>`}</div>
-      <div class="cin"><input id="chat-input" autocomplete="off" placeholder="Napište zprávu…" onkeydown="if(event.key==='Enter')Chat.send()"><button class="btn ok" onclick="Chat.send()">Odeslat</button></div>${Tpl.chips()}</div>`;
+        <div class="nm"><b>${esc(m.f)}</b>${m.role == 'Trenér' || m.role == 'Šéftrenér' ? `<span class="pill ok">${esc(m.role)}</span>` : ''}</div>${ChatFiles.html(m)}${m.a && m.a.c ? '' : esc(m.x)}${Chat.foot(m, u)}</div>`).join('') || `<div class="empty" style="padding:14px"><div class="eic">${Icons.svg('chat')}</div><b>Zatím žádné zprávy</b><div class="mut">Napište první zprávu – uvidí ji ${ct ? 'trenéři' : 'trenéři a rodiče'} kategorie.</div></div>`}</div>
+      ${ChatFiles.pending(team)}<div class="cin">${ChatFiles.button()}<input id="chat-input" autocomplete="off" placeholder="Napište zprávu…" onkeydown="if(event.key==='Enter')Chat.send()"><button class="btn ok" onclick="Chat.send()">Odeslat</button></div>${Tpl.chips()}</div>`;
   }
 
   /** Zprávy od vedení, které uživatel smí vidět (hromadné / jen trenérům / osobní). */
@@ -1418,13 +1418,55 @@ class Chat {
     const r = await Sync.write('Reakci se nepodařilo uložit', q);
     if (!r) Sync.queueReload(['reacts']);
   }
+  // ----- přílohy (fotky a soubory, viz ChatFiles) -----
+  /** 📎: výběr fotky nebo souboru (na telefonu nabídne i fotoaparát a galerii). */
+  static pickFile() {
+    if (UI.offlineAt || !navigator.onLine) return Sync.toast('⚠ Bez internetu nejde přílohu poslat.');
+    const u = UI.user, key = UI.chatSub == 'dm' ? 'dm:' + UI.dmWith : Model.coachLike(u) ? (UI.chatSub == 'coach' ? 'T-' + u.team : u.team) : UI.chatTeam;
+    const old = $('#chat-file-pick'); if (old) old.remove();          // po zrušeném výběru zůstal v dokumentu
+    const f = document.createElement('input'); f.type = 'file'; f.id = 'chat-file-pick'; f.accept = ChatFiles.ACCEPT; f.style.display = 'none';
+    f.onchange = () => { const x = f.files && f.files[0]; f.remove(); if (x) ChatFiles.prepare(x, key); };
+    document.body.appendChild(f); f.click();
+  }
+  static dropFile() { ChatFiles.discard(); App.render(); }
+  /** Nahraje vybranou přílohu (s hláškou „Odesílám…“). */
+  static async uploadAtt(prefix) {
+    UI.attBusy = 'Odesílám ' + (UI.att.img ? 'fotku' : 'soubor') + '…'; App.render();
+    try { return await ChatFiles.upload(prefix); } finally { UI.attBusy = ''; App.render(); }
+  }
+  /** Fotka přes celou obrazovku (klik / Esc zavře, tlačítko uloží). */
+  static viewImg(path) {
+    const src = ChatFiles.map[path]; if (!src) return;
+    const a = ChatFiles.find(path) || {n: 'fotka.jpg'}, o = document.createElement('div');
+    o.className = 'imgv'; o.setAttribute('role', 'dialog'); o.setAttribute('aria-label', 'Fotka');
+    o.innerHTML = `<img src="${src}" alt="Fotka"><div class="imgvb"><a class="btn" href="${src}" download="${esc(a.n)}">⬇ Uložit</a><button type="button" class="btn">✕ Zavřít</button></div>`;
+    const close = () => { o.remove(); document.removeEventListener('keydown', key); };
+    const key = e => { if (e.key == 'Escape') close(); };
+    o.addEventListener('click', e => { if (!e.target.closest('a')) close(); });
+    document.addEventListener('keydown', key); document.body.appendChild(o);
+  }
+  /** Soubor z přílohy: otevře se v prohlížeči (PDF, fotka, video, text), ostatní se stáhne pod původním názvem. */
+  static async openFile(path) {
+    const a = ChatFiles.find(path) || {n: path.split('/').pop(), m: ''};
+    const view = /^(application\/pdf|image\/|video\/|audio\/|text\/plain)/.test(a.m || '');
+    const w = window.open('', '_blank');                               // otevřít hned (po čekání by ho prohlížeč zablokoval)
+    const r = await sb.storage.from('chat').createSignedUrl(path, 600, view ? {} : {download: a.n});
+    if (r.error || !r.data) { if (w) w.close(); return Sync.toast('Soubor se nepodařilo otevřít: ' + ((r.error && r.error.message) || 'už není k dispozici')); }
+    if (w) w.location.href = r.data.signedUrl; else location.href = r.data.signedUrl;
+  }
+
   /** Odešle zprávu do chatu (znovu se kontroluje oprávnění) a upozorní ostatní členy chatu. */
   static async send() {
     const u = UI.user, team = Model.coachLike(u) ? (UI.chatSub == 'coach' ? 'T-' + u.team : u.team) : UI.chatTeam, input = $('#chat-input'), text = input && input.value.trim();
-    if (!text || !Model.canChat(u, team)) return;
+    const file = UI.att && UI.att.key == team;
+    if ((!text && !file) || !Model.canChat(u, team) || UI.attBusy) return;
     input.value = '';                                                 // hned vyprázdnit (ochrana proti dvojímu odeslání)
-    const r = await Sync.write('Zprávu se nepodařilo odeslat', sb.from('chat_messages').insert({team, body: text}).select().single());
-    if (!r) { const i = $('#chat-input'); if (i) i.value = text; return; }
+    const att = file ? await Chat.uploadAtt(`t/${team}/${u.id}`) : null;
+    if (file && !att) { const i = $('#chat-input'); if (i) i.value = text; return; }
+    const row = {team, body: text || ChatFiles.label(att)}; if (att) { if (!text) att.c = 1; row.att = att; }
+    const r = await Sync.write('Zprávu se nepodařilo odeslat', sb.from('chat_messages').insert(row).select().single());
+    if (!r) { if (att) ChatFiles.remove(att.p); const i = $('#chat-input'); if (i) i.value = text; return; }
+    if (att) ChatFiles.discard();
     if (!Model.chat(team).some(m => m.id == r.data.id)) Model.chat(team).push(Sync.chatRow(r.data));    // ostatním přijde přes Realtime
     UI.focusChat = true;
     App.render();
@@ -1434,6 +1476,169 @@ class Chat {
 
 // Klik kamkoli mimo výběr reakce ho zavře
 document.addEventListener('click', e => { if (UI.rxOpen && !e.target.closest('.rxpk,.rxadd')) { UI.rxOpen = 0; App.render(); } });
+
+
+/* ---------------------------------------------------------------------
+   ChatFiles – přílohy zpráv (fotky a soubory) v soukromém úložišti Supabase (bucket "chat").
+   Fotka se před odesláním zmenší (max. 1600 px, JPEG – i kvůli datům v telefonu, zmizí i údaje o poloze z fotky).
+   Ve zprávě se fotka ukáže jako náhled (stáhne se jednou a uloží do paměti zařízení), soubor jako odkaz ke stažení.
+   Ovládání z obrazovky je v Chat (pickFile, dropFile, openFile, viewImg), aby fungovalo i v režimu jen ke čtení.
+   --------------------------------------------------------------------- */
+class ChatFiles {
+  static LIMIT = 10 * 1024 * 1024;                                   // stejné jako file_size_limit bucketu v schema.sql
+  static MAX = 1600;                                                 // delší strana zmenšené fotky
+  static CACHE = 'unie-chat'; static BASE = 'https://chat.invalid/';
+  static map = {}; static failed = {}; static loading = new Set();
+  static IMG = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];   // tyto typy umí ukázat každý prohlížeč
+  static EXT = {jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', heic: 'image/heic', heif: 'image/heif',
+    pdf: 'application/pdf', txt: 'text/plain', csv: 'text/csv', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', ppt: 'application/vnd.ms-powerpoint',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', odt: 'application/vnd.oasis.opendocument.text',
+    ods: 'application/vnd.oasis.opendocument.spreadsheet', zip: 'application/zip', mp4: 'video/mp4', mov: 'video/quicktime', mp3: 'audio/mpeg', m4a: 'audio/x-m4a'};
+  static ACCEPT = 'image/*,' + Object.keys(ChatFiles.EXT).map(e => '.' + e).join(',');
+
+  static ext(name) { const m = /\.([a-z0-9]{1,5})$/i.exec(name || ''); return m ? m[1].toLowerCase() : ''; }
+  static mime(file) {
+    const t = (file.type || '').toLowerCase(), byExt = ChatFiles.EXT[ChatFiles.ext(file.name)];
+    return Object.values(ChatFiles.EXT).includes(t) ? t : t == 'application/x-zip-compressed' ? 'application/zip' : t == 'audio/mp4' ? 'audio/x-m4a' : byExt || '';
+  }
+  static size(b) { return b >= 1048576 ? (b / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(b / 1024)) + ' kB'; }
+  static icon(m) { return /^image\//.test(m) ? '🖼' : m == 'application/pdf' ? '📕' : /word|opendocument\.text|text\//.test(m) ? '📝' : /excel|sheet|csv/.test(m) ? '📊' : /powerpoint|presentation/.test(m) ? '📽' : /^video\//.test(m) ? '🎬' : /^audio\//.test(m) ? '🎵' : /zip/.test(m) ? '🗜' : '📄'; }
+  /** Název souboru do cesty v úložišti: bez diakritiky a zvláštních znaků. */
+  static safe(name) {
+    const e = ChatFiles.ext(name), base = (e ? name.slice(0, -e.length - 1) : name).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 50) || 'soubor';
+    return base + (e ? '.' + e : '');
+  }
+
+  /** Zmenší fotku na max. 1600 px (JPEG). GIF (animace) a fotku, kterou prohlížeč neumí načíst, nechá beze změny. */
+  static async shrink(file, mime) {
+    if (mime == 'image/gif') return null;
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = ko; i.src = url; });
+      const w0 = img.naturalWidth, h0 = img.naturalHeight; if (!w0 || !h0) return null;
+      const k = Math.min(1, ChatFiles.MAX / Math.max(w0, h0)), w = Math.round(w0 * k), h = Math.round(h0 * k);
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.drawImage(img, 0, 0, w, h);   // průhledné PNG na bílém
+      const blob = await new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.82));
+      if (!blob) return null;
+      if (k == 1 && mime == 'image/jpeg' && file.size <= blob.size) return {blob: file, w, h, mime};   // malá fotka: originál je menší
+      return {blob, w, h, mime: 'image/jpeg'};
+    } catch (e) { return null; }
+    finally { URL.revokeObjectURL(url); }
+  }
+
+  /** Připraví vybraný soubor k odeslání (UI.att). key = chat, do kterého patří (kategorie nebo 'dm:<id>'). */
+  static async prepare(file, key) {
+    let mime = ChatFiles.mime(file);
+    if (!mime) return Sync.toast('⚠ Tento typ souboru nejde poslat. Pošlete fotku, PDF, dokument Word/Excel/PowerPoint, text, ZIP, video MP4/MOV nebo zvuk.');
+    let blob = file, w = 0, h = 0, name = file.name || 'soubor';
+    if (/^image\//.test(mime)) {
+      UI.attBusy = 'Upravuji fotku…'; App.render();
+      const r = await ChatFiles.shrink(file, mime);
+      if (r) { blob = r.blob; w = r.w; h = r.h; if (r.mime != mime) { mime = r.mime; name = name.replace(/\.[a-z0-9]{1,5}$/i, '') + '.jpg'; } }
+      UI.attBusy = '';
+    }
+    if (blob.size > ChatFiles.LIMIT) { App.render(); return Sync.toast(`⚠ Soubor je příliš velký (${ChatFiles.size(blob.size)}). Největší povolená velikost je 10 MB.`); }
+    ChatFiles.discard();
+    const img = ChatFiles.IMG.includes(mime) && w > 0;
+    UI.att = {key, blob, name, mime, size: blob.size, w, h, img, url: img ? URL.createObjectURL(blob) : ''};
+    UI.focusChat = true; App.render();
+  }
+  static discard() { if (UI.att && UI.att.url) { try { URL.revokeObjectURL(UI.att.url); } catch (e) {} } UI.att = null; }
+
+  /** Náhled vybrané přílohy nad polem pro zprávu (s křížkem pro zrušení). */
+  static pending(key) {
+    if (UI.attBusy) return `<div class="attp"><span class="mut">⏳ ${esc(UI.attBusy)}</span></div>`;
+    const a = UI.att; if (!a || a.key != key) return '';
+    return `<div class="attp">${a.img ? `<img src="${a.url}" alt="">` : `<span class="attic">${ChatFiles.icon(a.mime)}</span>`}
+      <div class="attn"><b>${esc(a.name)}</b><span class="mut">${ChatFiles.size(a.size)}${a.img ? ' · zmenšená fotka' : ''}</span></div>
+      <button type="button" class="btn" onclick="Chat.dropFile()" aria-label="Odebrat přílohu" title="Odebrat přílohu">✕</button></div>`;
+  }
+  /** Tlačítko 📎 vedle pole pro zprávu. */
+  static button() { return `<button type="button" class="btn attb" onclick="Chat.pickFile()" aria-label="Přidat fotku nebo soubor" title="Přidat fotku nebo soubor">📎</button>`; }
+
+  /** Nahraje připravenou přílohu do úložiště; vrátí popis přílohy pro zprávu (att), nebo null. */
+  static async upload(prefix) {
+    const a = UI.att, path = `${prefix}/${Date.now()}-${ChatFiles.safe(a.name)}`;
+    const { error } = await sb.storage.from('chat').upload(path, a.blob, {contentType: a.mime, upsert: false, cacheControl: '31536000'});
+    if (error) {
+      console.error('Příloha', error);
+      Sync.toast('Přílohu se nepodařilo nahrát: ' + (/bucket|not found/i.test(error.message || '') ? 'nejdřív spusťte aktualizované SQL v Supabase (úložiště "chat").' : /size|large/i.test(error.message || '') ? 'soubor je příliš velký.' : error.message || error));
+      return null;
+    }
+    if (a.img) ChatFiles.keep(path, a.blob);
+    const att = {p: path, n: a.name.slice(0, 200), s: a.size, m: a.mime};
+    if (a.img) { att.w = a.w; att.h = a.h; }
+    return att;
+  }
+  /** Zpráva se neuložila → nahraný soubor smazat. */
+  static async remove(path) { try { await sb.storage.from('chat').remove([path]); } catch (e) {} }
+
+  /** Text zprávy, když se posílá jen příloha (vidí ho i upozornění a starší verze aplikace). */
+  static label(att) { return ChatFiles.IMG.includes(att.m) ? '📷 Fotka' : '📎 ' + att.n; }
+
+  /** Příloha v bublině zprávy: fotka jako náhled, soubor jako odkaz. */
+  static html(m) {
+    const a = m.a; if (!a || !a.p) return '';
+    const p = esc(a.p);
+    if (ChatFiles.IMG.includes(a.m) && a.w && a.h) {
+      const src = ChatFiles.src(a.p), w = Math.min(260, a.w);
+      return `<button type="button" class="attimg" onclick="Chat.viewImg(this.dataset.p)" data-p="${p}" aria-label="Zobrazit fotku" style="width:${w}px;aspect-ratio:${a.w} / ${a.h}">
+        <img data-cf="${p}" alt="Fotka" ${src ? `src="${src}"` : ''}>${src || ChatFiles.failed[a.p] ? '' : '<span class="mut">Načítám fotku…</span>'}${ChatFiles.failed[a.p] ? '<span class="mut">Fotka už není k dispozici</span>' : ''}</button>`;
+    }
+    return `<button type="button" class="attf" onclick="Chat.openFile(this.dataset.p)" data-p="${p}"><span class="attic">${ChatFiles.icon(a.m)}</span>
+      <span class="attn"><b>${esc(a.n)}</b><span class="mut">${a.s ? ChatFiles.size(a.s) + ' · ' : ''}otevřít / stáhnout</span></span></button>`;
+  }
+  /** Najde popis přílohy podle cesty (v chatu kategorie i v soukromých zprávách). */
+  static find(path) {
+    for (const L of Object.values(DB.chats || {})) { const m = L.find(x => x.a && x.a.p == path); if (m) return m.a; }
+    const d = (DB.dm || []).find(x => x.a && x.a.p == path); return d ? d.a : null;
+  }
+
+  /** Adresa stažené fotky; když ještě není, spustí stahování a vrátí ''. */
+  static src(path) {
+    if (ChatFiles.map[path]) return ChatFiles.map[path];
+    if (!ChatFiles.failed[path] && !ChatFiles.loading.has(path)) { ChatFiles.loading.add(path); ChatFiles.load(path); }
+    return '';
+  }
+  static async load(path) {
+    try {
+      const c = window.caches ? await caches.open(ChatFiles.CACHE) : null, key = ChatFiles.BASE + path, hit = c ? await c.match(key) : null;
+      let blob;
+      if (hit) blob = await hit.blob();
+      else {
+        const { data, error } = await sb.storage.from('chat').download(path);
+        if (error || !data) throw error || new Error('prázdná odpověď');
+        blob = data;
+        if (c) { try { await c.put(key, new Response(blob, {headers: {'Content-Type': blob.type || 'image/jpeg'}})); } catch (e) {} }
+      }
+      ChatFiles.map[path] = URL.createObjectURL(blob);
+      document.querySelectorAll('img[data-cf]').forEach(i => { if (i.dataset.cf == path) { i.src = ChatFiles.map[path]; const s = i.nextElementSibling; if (s) s.remove(); } });
+    } catch (e) { ChatFiles.failed[path] = 1; console.warn('Příloha se nenačetla', path, e); App.refresh(); }
+    finally { ChatFiles.loading.delete(path); }
+  }
+  /** Vlastní odeslaná fotka: rovnou do paměti, ať se znovu nestahuje. */
+  static async keep(path, blob) {
+    ChatFiles.map[path] = URL.createObjectURL(blob);
+    if (window.caches) { try { (await caches.open(ChatFiles.CACHE)).put(ChatFiles.BASE + path, new Response(blob, {headers: {'Content-Type': blob.type || 'image/jpeg'}})); } catch (e) {} }
+  }
+  /** Při odhlášení smazat přílohy z paměti zařízení (sdílený telefon). */
+  static async clear() {
+    Object.values(ChatFiles.map).forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} });
+    ChatFiles.map = {}; ChatFiles.failed = {}; ChatFiles.discard(); ChatFiles.cleaned = false;
+    if (window.caches) { try { await caches.delete(ChatFiles.CACHE); } catch (e) {} }
+  }
+  /** Správce: smaže z úložiště soubory, jejichž zprávy už automatické mazání chatu odstranilo (šetří místo). */
+  static async cleanup() {
+    const u = UI.user; if (!u || u.r != 'a' || ChatFiles.cleaned) return; ChatFiles.cleaned = true;
+    try {
+      const r = await sb.rpc('chat_orphan_files'); if (r.error || !Array.isArray(r.data) || !r.data.length) return;
+      const L = r.data.map(x => typeof x == 'string' ? x : x.chat_orphan_files).filter(Boolean);
+      if (L.length) await sb.storage.from('chat').remove(L);
+    } catch (e) {}
+  }
+}
 
 
 /* ---------------------------------------------------------------------
@@ -1485,8 +1690,8 @@ class Dm {
     DB.notifs.forEach(n => { if (n.sub == 'dm' && n.by == pid && Notifs.forUser(n, u)) Notifs.markRead(n, u); });
     const canWrite = !!c || msgs.some(m => m.fid == pid);                 // psát smí jen povolený kontakt (nebo ten, kdo napsal jako první)
     return `<div class="col"><div class="row"><button class="btn" style="flex:none" onclick="Dm.back()">← Zprávy</button><div class="card" style="flex:1;margin:0"><b>${esc(name)}</b>${c ? `<div class="mut">${esc(Dm.roleLabel(c))}</div>` : ''}</div></div>
-      <div class="card"><div class="chat" id="chat-box">${msgs.map(m => `<div class="bub ${m.fid == u.id ? 'me' : ''}"><div class="nm"><b>${esc(m.fid == u.id ? 'Vy' : m.fn)}</b></div>${esc(m.x)}<div class="tm">${esc(m.t)}</div></div>`).join('') || '<div class="mut">Zatím žádné zprávy. Napište první.</div>'}</div>
-        ${canWrite ? `<div class="cin"><input id="chat-input" autocomplete="off" placeholder="Napište zprávu…" onkeydown="if(event.key==='Enter')Dm.send()"><button class="btn ok" onclick="Dm.send()">Odeslat</button></div>${Tpl.chips()}` : '<div class="mut" style="margin-top:8px">Tomuto uživateli už nelze psát.</div>'}</div></div>`;
+      <div class="card"><div class="chat" id="chat-box">${msgs.map(m => `<div class="bub ${m.fid == u.id ? 'me' : ''}"><div class="nm"><b>${esc(m.fid == u.id ? 'Vy' : m.fn)}</b></div>${ChatFiles.html(m)}${m.a && m.a.c ? '' : esc(m.x)}<div class="tm">${esc(m.t)}</div></div>`).join('') || '<div class="mut">Zatím žádné zprávy. Napište první.</div>'}</div>
+        ${canWrite ? `${ChatFiles.pending('dm:' + pid)}<div class="cin">${ChatFiles.button()}<input id="chat-input" autocomplete="off" placeholder="Napište zprávu…" onkeydown="if(event.key==='Enter')Dm.send()"><button class="btn ok" onclick="Dm.send()">Odeslat</button></div>${Tpl.chips()}` : '<div class="mut" style="margin-top:8px">Tomuto uživateli už nelze psát.</div>'}</div></div>`;
   }
 
   static open(id)  { UI.dmWith = id; UI.focusChat = true; App.render(); }
@@ -1495,11 +1700,16 @@ class Dm {
 
   static async send() {
     const u = UI.user, to = UI.dmWith, input = $('#chat-input'), text = input && input.value.trim();
-    if (!text || !to) return;
+    const file = UI.att && UI.att.key == 'dm:' + to;
+    if ((!text && !file) || !to || UI.attBusy) return;
     input.value = '';
-    const r = await Sync.write('Zprávu se nepodařilo odeslat', sb.from('direct_messages').insert({to_id: to, body: text}).select().single());
-    if (!r) { const i = $('#chat-input'); if (i) i.value = text; return; }
-    if (!DB.dm.some(m => m.id == r.data.id)) DB.dm.push({id: r.data.id, fid: u.id, tid: to, fn: r.data.from_name, tn: r.data.to_name, x: r.data.body, t: Util.stamp(r.data.created_at)});
+    const att = file ? await Chat.uploadAtt(`d/${u.id}/${to}`) : null;
+    if (file && !att) { const i = $('#chat-input'); if (i) i.value = text; return; }
+    const row = {to_id: to, body: text || ChatFiles.label(att)}; if (att) { if (!text) att.c = 1; row.att = att; }
+    const r = await Sync.write('Zprávu se nepodařilo odeslat', sb.from('direct_messages').insert(row).select().single());
+    if (!r) { if (att) ChatFiles.remove(att.p); const i = $('#chat-input'); if (i) i.value = text; return; }
+    if (att) ChatFiles.discard();
+    if (!DB.dm.some(m => m.id == r.data.id)) DB.dm.push({id: r.data.id, fid: u.id, tid: to, fn: r.data.from_name, tn: r.data.to_name, x: r.data.body, a: r.data.att || null, t: Util.stamp(r.data.created_at)});
     UI.focusChat = true; App.render();
   }
 }

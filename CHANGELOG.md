@@ -6,6 +6,19 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 16. 11. 2026 (fotky a soubory v chatu)
+
+- Do chatu kategorie, chatu trenérů i soukromých zpráv jde přidat **fotku nebo soubor**: tlačítko **📎** vedle pole pro zprávu (na telefonu nabídne fotoaparát, galerii i soubory). Před odesláním je vidět náhled, křížkem jde příloha zrušit; text ke zprávě je nepovinný.
+- Fotka se před odesláním **zmenší** (delší strana max. 1600 px, JPEG), takže zabere zhruba 200–400 kB a šetří data v telefonu. Zmenšením zmizí i údaje o poloze uložené ve fotce.
+- Ve zprávě se fotka ukáže jako náhled, klepnutím se otevře přes celou obrazovku (tlačítko Uložit). Soubor je odkaz: PDF, video a text se otevřou v prohlížeči, Word/Excel apod. se stáhnou pod původním názvem.
+- Povolené jsou fotky, PDF, Word, Excel, PowerPoint, OpenOffice, text/CSV, ZIP, video MP4/MOV a zvuk, nejvýš **10 MB** na soubor.
+- Přílohy leží v soukromém úložišti Supabase **chat**. Vidí je jen ten, kdo vidí daný chat (rodiče a trenéři kategorie, v chatu trenérů jen trenéři, u soukromé zprávy jen odesílatel a příjemce). Nahrát jde jen do chatu, kam smí uživatel psát; hlídá to databáze.
+- Když automatické mazání chatu smaže staré zprávy, aplikace Správce po přihlášení smaže z úložiště i jejich přílohy.
+
+**V Supabase:** spustit celý `schema.sql` v SQL Editoru (přidá sloupec pro přílohy, úložiště **chat** a jeho pravidla přístupu). Nic dalšího se ručně nastavovat nemusí.
+
+---
+
 ## 16. 11. 2026 (role Šéftrenér mládeže)
 
 - Nová role **Šéftrenér mládeže**. Vidí všechno jako trenér kategorie (tréninky, zápasy, docházku, hráče, rodiče, poznámky, rozvrh hřišť, chat), ale **nic neupravuje**: tlačítka pro přidání, zrušení či smazání tréninku a zápasu, docházku, nominace, výsledky a úpravy hráčů nevidí a pole má zamčená. Zápis mu zakazuje i databáze (RLS), nejen aplikace.
