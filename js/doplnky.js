@@ -568,10 +568,10 @@ class Captcha {
 
 /* ---------------------------------------------------------------------
    Week – přepínání týdnů ‹ › v Přehledu (rodič), Trénincích a Zápasech (trenér).
-   Výchozí je aktuální týden Po–Ne; dopředu lze až 12 týdnů (víc databáze tréninky z rozvrhu nevytvoří).
+   Výchozí je aktuální týden Po–Ne; dopředu lze až 4 týdny.
    --------------------------------------------------------------------- */
 class Week {
-  static MAX = 12;
+  static MAX = 4;
   static TABS = ['cal', 'att', 'ev'];       // záložky s přepínačem; jinde se aplikace vrátí na aktuální týden
   static seq = 0;
   static label(n) { return n == 0 ? 'Tento týden' : n == 1 ? 'Příští týden' : `Za ${n} ${n < 5 ? 'týdny' : 'týdnů'}`; }
