@@ -1369,8 +1369,8 @@ class Chat {
     DB.notifs.forEach(n => { if (n.tab == 'chat' && n.team == team && Notifs.forUser(n, u)) Notifs.markRead(n, u); });
     const ct = team.startsWith('T-');                                  // interní chat trenérů kategorie
     return `<div class="card"><div class="pay"><b>${ct ? '🔒 Chat trenérů ' + team.slice(2) : '💬 Chat ' + team}</b><span class="mut">${ct ? 'jen trenéři kategorie ' + team.slice(2) : 'trenéři a rodiče kategorie ' + team}</span></div>
-      <div class="chat" id="chat-box" style="margin-top:10px">${Model.chat(team).map(m => `<div class="bub ${m.fid == u.id ? 'me' : ''}">
-        <div class="nm"><b>${esc(m.f)}</b>${m.role == 'Trenér' ? '<span class="pill ok">Trenér</span>' : ''}</div>${esc(m.x)}<div class="tm">${esc(m.t)}</div></div>`).join('') || `<div class="empty" style="padding:14px"><div class="eic">${Icons.svg('chat')}</div><b>Zatím žádné zprávy</b><div class="mut">Napište první zprávu – uvidí ji ${ct ? 'trenéři' : 'trenéři a rodiče'} kategorie.</div></div>`}</div>
+      <div class="chat" id="chat-box" data-k="${esc(team)}" style="margin-top:10px">${Model.chat(team).map(m => `<div class="bub ${m.fid == u.id ? 'me' : ''}">
+        <div class="nm"><b>${esc(m.f)}</b>${m.role == 'Trenér' ? '<span class="pill ok">Trenér</span>' : ''}</div>${esc(m.x)}<div class="tm">${esc(m.t)}</div>${Chat.reactions(m, u)}</div>`).join('') || `<div class="empty" style="padding:14px"><div class="eic">${Icons.svg('chat')}</div><b>Zatím žádné zprávy</b><div class="mut">Napište první zprávu – uvidí ji ${ct ? 'trenéři' : 'trenéři a rodiče'} kategorie.</div></div>`}</div>
       <div class="cin"><input id="chat-input" autocomplete="off" placeholder="Napište zprávu…" onkeydown="if(event.key==='Enter')Chat.send()"><button class="btn ok" onclick="Chat.send()">Odeslat</button></div>${Tpl.chips()}</div>`;
   }
 
@@ -1384,8 +1384,29 @@ class Chat {
       <div style="margin:6px 0">${esc(m.x)}</div><div class="mut">${esc(m.f)} · ${esc(m.role)} · ${esc(m.t)}</div></div>`).join('') || Look.empty('mega', 'Žádné zprávy od klubu', 'Až vedení klubu pošle oznámení, najdete ho tady.');
   }
 
+  /** Tlačítka 👍 / 👎 pod zprávou s počty; zvýrazněná je moje reakce. Podržením / najetím myší se ukáže, kdo reagoval. */
+  static reactions(m, u) {
+    const L = DB.reacts[m.id] || [], mine = (L.find(r => r.u == u.id) || {}).k || 0;
+    const btn = (k, ic, lbl) => { const who = L.filter(r => r.k == k), n = who.length;
+      return `<button type="button" class="rxb ${mine == k ? 'on' : ''}" onclick="Chat.react(${+m.id}, ${k})" aria-pressed="${mine == k}"
+        aria-label="${lbl}${n ? ': ' + n : ''}" title="${esc(n ? who.map(r => r.u == u.id ? 'Vy' : r.n).join(', ') : lbl)}">${ic}${n ? `<span>${n}</span>` : ''}</button>`; };
+    return `<div class="rx">${btn(1, '👍', 'Palec nahoru')}${btn(-1, '👎', 'Palec dolů')}</div>`;
+  }
+
   // ----- akce -----
   static show(sub, team) { UI.chatSub = sub; if (team) UI.chatTeam = team; App.render(); }
+  /** Reakce na zprávu: klik na stejný palec reakci zruší, na druhý ji změní. Na obrazovce se projeví hned, databáze ji pak potvrdí. */
+  static async react(id, k) {
+    const u = UI.user; if (!u || UI.offlineAt) return;
+    const L = DB.reacts[id] || (DB.reacts[id] = []), i = L.findIndex(r => r.u == u.id), was = i >= 0 ? L[i].k : 0;
+    if (i >= 0) L.splice(i, 1);
+    if (was != k) L.push({u: u.id, n: u.name || 'Vy', k});
+    App.render();
+    const q = was == k ? sb.from('chat_reactions').delete().eq('message_id', id).eq('user_id', u.id)
+                       : sb.from('chat_reactions').upsert({message_id: id, user_id: u.id, kind: k}, {onConflict: 'message_id,user_id'});
+    const r = await Sync.write('Reakci se nepodařilo uložit', q);
+    if (!r) Sync.queueReload(['reacts']);
+  }
   /** Odešle zprávu do chatu (znovu se kontroluje oprávnění) a upozorní ostatní členy chatu. */
   static async send() {
     const u = UI.user, team = Model.coachLike(u) ? (UI.chatSub == 'coach' ? 'T-' + u.team : u.team) : UI.chatTeam, input = $('#chat-input'), text = input && input.value.trim();

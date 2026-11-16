@@ -218,7 +218,7 @@ class Auth {
   /** Vyčistí paměť aplikace a vrátí přihlašovací obrazovku. */
   static reset() {
     Sync.stop();
-    Object.assign(DB, {users:{}, members:[], docs:{}, events:[], results:[], payItems:[], plan:[], messages:[], chats:{}, notifs:[], links:[], settings:{}, dm:[], dmContacts:[], tcoaches:[], aper:[], calTok:undefined,
+    Object.assign(DB, {users:{}, members:[], docs:{}, events:[], results:[], payItems:[], plan:[], messages:[], chats:{}, reacts:{}, notifs:[], links:[], settings:{}, dm:[], dmContacts:[], tcoaches:[], aper:[], calTok:undefined,
                        att:{}, coachAtt:{}, coachNm:{}, coachEv:{}, pastT:[], nominations:{}, carpool:{}, responses:{}, notes:{}, seen:{},
                        venues:[], eplans:{}, ttpl:[], tpls:[], cpool:{}, cpPeers:{}, subPl:null});
     UI.user = null; UI.asTeam = ''; UI.imp = null; UI.recovery = false; UI.more = false; UI.bell = false; UI.modal = null; UI.profile = false; UI.profMsg = ''; UI.pkSel = {}; UI.player = ''; UI.boot = false; UI.kid = ''; UI.editUser = ''; UI.dmWith = ''; UI.dmSearch = ''; UI.ai = null; UI.calTok = undefined; UI.calMsg = '';
@@ -438,6 +438,13 @@ class Sync {
       const rows = await Sync.last('chat_messages', 300);
       DB.chats = {}; rows.forEach(r => Model.chat(r.team).push(Sync.chatRow(r)));
     },
+    /** Reakce 👍 / 👎 na zprávy chatu: {idZprávy: [{u: idUživatele, n: jméno, k: 1 | -1}]} (když tabulka ještě není, zůstane prázdné). */
+    reacts: async () => {
+      try {
+        const rows = await Sync.fetchAll('chat_reactions', q => q.order('message_id').order('user_id'));
+        DB.reacts = {}; rows.forEach(r => (DB.reacts[r.message_id] = DB.reacts[r.message_id] || []).push({u: r.user_id, n: r.user_name, k: r.kind}));
+      } catch (e) { DB.reacts = DB.reacts || {}; }
+    },
     /** Soukromé zprávy a seznam lidí, kterým smí uživatel psát (když tabulka ještě není, zůstane prázdné). */
     dm: async () => {
       try {
@@ -491,7 +498,7 @@ class Sync {
   // ---------- Realtime ----------
   /** Která tabulka při změně znovu načte které části paměti. */
   static watch = {
-    teams: ['teams'], settings: ['settings'], events: ['events', 'coach'], results: ['results'], plan: ['plan'], nominations: ['noms'], club_messages: ['club'], notifications: ['notifs'],
+    teams: ['teams'], settings: ['settings'], chat_reactions: ['reacts'], events: ['events', 'coach'], results: ['results'], plan: ['plan'], nominations: ['noms'], club_messages: ['club'], notifications: ['notifs'],
     coach_attendance: ['coach'], direct_messages: ['dm'], venues: ['venues'], event_plans: ['eplans'], notes: ['notes'], player_absence: ['pabs'], user_prefs: ['prefs'], absence_periods: ['aper'], players: ['players', 'people'], player_payments: ['players'], parent_players: ['people'], profiles: ['people', 'tcoaches']
   };
 

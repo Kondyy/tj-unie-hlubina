@@ -179,6 +179,15 @@ button.btn.ok{background:var(--grad);border-color:transparent;color:#fff;font-we
 html[data-theme="light"] .bub.me{background:#dbe6fb;border-color:#b9cdf5}
 .bub .nm{font-size:12px;color:var(--mut);display:flex;gap:6px;align-items:center;margin-bottom:2px}
 .bub .tm{font-size:11px;color:var(--mut);text-align:right;margin-top:2px}
+.bub .rx{display:flex;gap:6px;margin-top:4px}
+.bub.me .rx{justify-content:flex-end}
+.rxb{display:inline-flex;align-items:center;gap:4px;min-height:28px;padding:2px 9px;border-radius:999px;border:1px solid var(--bd);background:transparent;color:var(--tx);font:inherit;font-size:13px;line-height:1;cursor:pointer;opacity:.75}
+.rxb span{font-size:12px;font-weight:600}
+.rxb:hover{opacity:1}
+.rxb.on{opacity:1;background:rgba(36,82,161,.35);border-color:rgba(100,140,230,.8)}
+.bub.me .rxb.on{background:rgba(227,30,38,.35);border-color:rgba(240,110,115,.8)}
+html[data-theme="light"] .rxb.on{background:#dbe6fb;border-color:#7fa0e0}
+html[data-theme="light"] .bub.me .rxb.on{background:#fde0e1;border-color:#e98a8e}
 .cin{display:flex;gap:8px;margin-top:10px}
 .cin input{margin:0;flex:1}
 .cin .btn{flex:none}

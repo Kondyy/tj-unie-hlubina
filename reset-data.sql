@@ -8,7 +8,7 @@ truncate table
   public.attendance, public.coach_attendance, public.nominations, public.results,
   public.events_skip, public.events, public.plan,
   public.notes, public.player_payments, public.player_absence, public.parent_players, public.players,
-  public.chat_messages, public.club_messages, public.direct_messages,
+  public.chat_reactions, public.chat_messages, public.club_messages, public.direct_messages,
   public.notification_reads, public.notifications, public.read_state
 restart identity cascade;
 
