@@ -1727,7 +1727,7 @@ class Messages {
     return `<div class="col"><div class="card"><b>✉ Nová zpráva</b>
       <div class="row" style="margin:10px 0">${Object.entries(CONFIG.msgTargets).map(([k, l]) => `<button class="chip ${kind == k ? 'on' : ''}" onclick="Messages.setKind('${Util.q(k)}')">${l}</button>`).join('')}</div>
       ${kind == 'user'
-        ? `<select onchange="Messages.setUser(this.value)">${users.map(x => `<option value="${x.id}" ${x.id == UI.msgUser ? 'selected' : ''}>${esc(x.name)} · ${x.role}${x.team ? ' ' + x.team : ''}</option>`).join('')}</select>`
+        ? `<select onchange="Messages.setUser(this.value)">${users.map(x => `<option value="${x.id}" ${x.id == UI.msgUser ? 'selected' : ''}>${esc(x.name)} · ${x.role}${x.r == 'c' && x.team ? ' ' + x.team : ''}</option>`).join('')}</select>`
         : `<div class="mut">${kind == 'all' ? 'Dostanou všichni členové klubu – rodiče i trenéři.' : 'Dostanou pouze trenéři všech kategorií.'}</div>`}
       <input value="${esc(UI.draftSubject)}" oninput="UI.draftSubject=this.value" placeholder="Předmět" autocomplete="off">
       <textarea rows="3" oninput="UI.draftText=this.value" placeholder="Text zprávy">${esc(UI.draftText)}</textarea>
@@ -1863,7 +1863,7 @@ class Users {
   /** Karta uživatele: údaje, přiřazené děti (rodič), tlačítka Upravit / Smazat, případně editor. */
   static card(x) {
     const me = x.id == UI.user.id, canEdit = UI.user.r == 'a' || !(x.r == 'v' || x.r == 'a');   // účty vedení a správců upravuje jen správce
-    return `<div class="card"><div class="pay" style="flex-wrap:wrap;gap:8px"><div style="min-width:0;flex:1 1 230px"><div style="display:flex;gap:12px;align-items:center;margin-bottom:6px">${Util.userAvatar(x, 64)}<span style="min-width:0"><b>${esc(x.name)}</b> <span class="pill ${x.r == 'a' ? 'no' : x.r == 'v' ? 'z' : x.r == 'c' || x.r == 's' ? 'ok' : 'wa'}">${x.role}${x.team ? ' ' + esc(x.team) : ''}</span></span></div>
+    return `<div class="card"><div class="pay" style="flex-wrap:wrap;gap:8px"><div style="min-width:0;flex:1 1 230px"><div style="display:flex;gap:12px;align-items:center;margin-bottom:6px">${Util.userAvatar(x, 64)}<span style="min-width:0"><b>${esc(x.name)}</b> <span class="pill ${x.r == 'a' ? 'no' : x.r == 'v' ? 'z' : x.r == 'c' || x.r == 's' ? 'ok' : 'wa'}">${x.role}${x.r == 'c' && x.team ? ' ' + esc(x.team) : ''}</span></span></div>
         <div class="mut" style="overflow-wrap:anywhere">${esc(x.email)}${x.phone ? ' · ☎ ' + esc(x.phone) : ''}${x.mc ? ' · <span class="cr">čeká na změnu hesla</span>' : ''}${x.consent ? '' : ' · <span class="mut">bez souhlasu</span>'}</div></div>
         ${canEdit ? `<div class="row" style="flex:none"><button class="chip" style="flex:none" onclick="Users.edit('${x.id}')">✏ Upravit</button>
           ${me ? '' : `<button class="chip" style="flex:none;color:var(--r)" onclick="Users.remove('${x.id}')">🗑 Smazat</button>`}</div>` : ''}</div>
