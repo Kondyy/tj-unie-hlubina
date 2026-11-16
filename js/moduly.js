@@ -864,7 +864,7 @@ class Events {
 
 
 /* ---------------------------------------------------------------------
-   Roster – soupiska týmu a detailní profil hráče (TRENÉR)
+   Roster – seznam hráčů týmu (záložka Hráči) a detailní profil hráče (TRENÉR)
    Profil: fotka, základní údaje, kontakty na rodiče, zdraví a poznámky, statistiky.
    (Údaj o postu hráče se záměrně neeviduje.)
    --------------------------------------------------------------------- */
@@ -1042,25 +1042,62 @@ class Cropper {
 }
 
 class Roster {
-  /** Záložka "Soupiska": seznam hráčů týmu, nebo detail vybraného hráče. */
+  /** Záložka "Hráči": seznam hráčů týmu (mřížka s řazením a filtrem), nebo detail vybraného hráče. */
   static view() {
     const team = UI.user.team;
-    const L = Model.membersOf(team).map(Model.fillProfile).sort((a, b) => (a.no === '' ? 99 : a.no) - (b.no === '' ? 99 : b.no));
+    const all = Model.membersOf(team).map(Model.fillProfile);
     if (UI.player) {                                                   // detail otevřeného hráče
       const m = Model.byId(UI.player);
       if (m && m.t == team) return Roster.detail(Model.fillProfile(m));
       UI.player = '';
     }
-    const withHealth = L.filter(m => m.al || m.lim).length;
-    const avg = L.length ? Math.round(L.reduce((s, m) => s + Model.attPct(m), 0) / L.length) : 0;
-    return `<div class="col">
-      <div class="card"><div class="pay"><b>👥 Soupiska ${team}</b><span class="pill z">${L.length} hráčů</span></div>
-        <div class="mut">Průměrná docházka ${avg} % · zdravotní poznámka u ${withHealth} hráčů</div></div>
-      ${L.map(m => `<div class="card pcard" onclick="Roster.open('${m.id}')">${Util.avatar(m, 52)}
-        <div class="pi"><b>${esc(m.full)}</b><div class="mut">#${m.no === '' ? '–' : m.no} · ${Util.age(m)}</div></div>
-        <div class="pr"><b class="${Util.attCls(Model.attPct(m))}">${Model.attPct(m)} %</b><span class="mut" style="font-size:12px">${Model.attCount(m).join('/')}</span>${m.al || m.lim ? '<span title="Zdravotní poznámka">🩹</span>' : ''}</div></div>`).join('')}
-      ${UI.addPlayer ? Roster.addForm() : `<button class="btn ok" style="width:100%" onclick="Roster.toggleAdd(true)">+ Přidat hráče</button>`}</div>`;
+    const withHealth = all.filter(m => m.al || m.lim).length;
+    const avg = all.length ? Math.round(all.reduce((s, m) => s + Model.attPct(m), 0) / all.length) : 0;
+    const years = [...new Set(all.map(m => m.by).filter(Boolean))].sort((a, b) => a - b);
+    if (UI.plYear && !years.includes(+UI.plYear)) UI.plYear = '';
+    const L = Roster.sorted(Roster.filtered(all));
+    const sortChip = (k, label) => `<button class="chip ${UI.plSort == k ? 'on' : ''}" onclick="Roster.sortBy('${k}')">${label}${UI.plSort == k ? ' ' + Roster.arrow(k) : ''}</button>`;
+    const G = CONFIG.attGood, M = CONFIG.attMid;
+    return `<div class="col wide">
+      <div class="card"><div class="pay"><b>👥 Hráči ${team}</b><span class="pill z">${all.length} hráčů</span></div>
+        <div class="mut">Průměrná docházka ${avg} % · zdravotní poznámka u ${withHealth} hráčů</div>
+        <div class="plf">
+          <div class="row"><span class="mut">Řadit:</span>${sortChip('az', 'Abeceda')}${sortChip('att', 'Docházka')}${sortChip('by', 'Ročník')}${sortChip('no', 'Číslo dresu')}</div>
+          <div class="row">
+            <select onchange="Roster.setFilter('plYear',this.value)" aria-label="Filtr ročníku"><option value="">Všechny ročníky</option>${years.map(y => `<option value="${y}" ${UI.plYear == y ? 'selected' : ''}>Ročník ${y}</option>`).join('')}</select>
+            <select onchange="Roster.setFilter('plAtt',this.value)" aria-label="Filtr docházky">${[['', 'Jakákoli docházka'], ['g', `Docházka ${G} % a víc`], ['y', `Docházka ${M}–${G - 1} %`], ['r', `Docházka pod ${M} %`]]
+              .map(([v, l]) => `<option value="${v}" ${UI.plAtt == v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+          ${L.length < all.length ? `<div class="mut">Zobrazeno ${L.length} z ${all.length} hráčů · <a href="#" onclick="Roster.resetFilter();return false">zrušit filtr</a></div>` : ''}</div></div>
+      <div class="plist">${L.map(m => `<div class="card pcard" onclick="Roster.open('${m.id}')">${Util.avatar(m, 44)}
+        <div class="pi"><b>${esc(m.full)}</b><div class="mut">#${m.no === '' ? '–' : m.no} · ${m.by ? 'ročník ' + m.by : 'ročník neuvedený'}${m.al || m.lim ? ' · <span title="Zdravotní poznámka">🩹</span>' : ''}</div></div>
+        <div class="pr"><b class="${Util.attCls(Model.attPct(m))}">${Model.attPct(m)} %</b><span class="mut" style="font-size:12px">${Model.attCount(m).join('/')}</span></div></div>`).join('')
+        || '<div class="card mut">Žádný hráč neodpovídá filtru.</div>'}</div>
+      <div class="col">${UI.addPlayer ? Roster.addForm() : `<button class="btn ok" style="width:100%" onclick="Roster.toggleAdd(true)">+ Přidat hráče</button>`}</div></div>`;
   }
+
+  /** Filtr seznamu hráčů: ročník (UI.plYear) a pásmo docházky (UI.plAtt: g / y / r jako barvy docházky). */
+  static filtered(L) {
+    return L.filter(m => (!UI.plYear || m.by == UI.plYear) && (!UI.plAtt || Util.attLvl(Model.attPct(m)) == UI.plAtt));
+  }
+  /** Řazení seznamu: az = příjmení A–Z, att = docházka (nejlepší nahoře), by = ročník (nejstarší nahoře), no = číslo dresu. UI.plDesc obrátí pořadí. */
+  static sorted(L) {
+    const key = m => { const w = String(m.full || m.n).trim().split(/\s+/); return w.length > 1 ? w[w.length - 1] + ' ' + w.slice(0, -1).join(' ') : w[0]; };
+    const az = (a, b) => key(a).localeCompare(key(b), 'cs');
+    const cmp = {
+      az,
+      att: (a, b) => Model.attPct(b) - Model.attPct(a) || az(a, b),
+      by:  (a, b) => (a.by || 9999) - (b.by || 9999) || az(a, b),
+      no:  (a, b) => (a.no === '' ? 999 : a.no) - (b.no === '' ? 999 : b.no) || az(a, b)
+    }[UI.plSort] || az;
+    const r = [...L].sort(cmp);
+    return UI.plDesc ? r.reverse() : r;
+  }
+  /** Popisek směru řazení u aktivního tlačítka (docházka je výchozí od nejlepší, proto ↓). */
+  static arrow(k) { return k == 'az' ? (UI.plDesc ? 'Z–A' : 'A–Z') : ((k == 'att') != UI.plDesc ? '↓' : '↑'); }
+  /** Klik na řazení: jiné řazení se zapne, opakovaný klik obrátí pořadí. */
+  static sortBy(k) { if (UI.plSort == k) UI.plDesc = !UI.plDesc; else { UI.plSort = k; UI.plDesc = false; } App.render(); }
+  static setFilter(k, v) { UI[k] = v; App.render(); }
+  static resetFilter() { UI.plYear = ''; UI.plAtt = ''; App.render(); }
 
   /** Formulář nového hráče. */
   static addForm() {
@@ -1073,7 +1110,7 @@ class Roster {
   /** Karta hráče. Všechna pole se upravují přímo a ukládají se automaticky do databáze (oninput). */
   static detail(m) {
     const st = DB.docs[m.n] || 'wait', doc = CONFIG.docStatus[st], ap = Model.attPct(m), tags = DB.notes[m.n] || [], id = m.id;
-    return `<div class="col"><button class="btn" onclick="Roster.close()">← Soupiska ${m.t}</button>
+    return `<div class="col"><button class="btn" onclick="Roster.close()">← Hráči ${m.t}</button>
 
       <!-- a) FOTKA + hlavní údaje -->
       <div class="card" style="margin-top:10px;text-align:center">${Util.avatar(m, 104)}

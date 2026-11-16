@@ -6,6 +6,17 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 16. 11. 2026 (záložka Hráči)
+
+- Záložka **Soupiska** se jmenuje **Hráči**.
+- Seznam hráčů je přehlednější: menší karty, na počítači jsou 2–3 hráči vedle sebe, na telefonu zůstává jeden pod druhým.
+- **Řazení**: abeceda (podle příjmení), docházka (nejlepší nahoře), ročník (nejstarší nahoře), číslo dresu. Opakovaný klik obrátí pořadí.
+- **Filtr**: podle ročníku a podle docházky (zelená / žlutá / červená pásma).
+
+**V Supabase:** nic.
+
+---
+
 ## 8. 11. 2026 (mezera pod tlačítkem zpět)
 
 - Tlačítko **← Zápasy** (a další tlačítka zpět jako ← Tréninky, ← Zpět na zápas) už není nalepené na kartu pod ním, je pod ním malá mezera.

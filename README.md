@@ -74,7 +74,7 @@ Po importu rodičů stáhnout Excel s přístupy a předat rodičům – při pr
 
 ## Nastavení, import docházky a vymazání dat
 - Záložka **Nastavení** (všechny role): zapnutí upozornění v telefonu a výběr, co má chodit (chat, soukromé zprávy, zprávy vedení, tréninky a zápasy, platby), export statistik do Excelu a – pro trenéry a vedení – import docházky: stáhnete předlohu (Jméno hráče | Ročník | Celková účast | Počet tréninků), doplníte a nahrajete; podporovaná je i původní klubová tabulka s daty a hodnotami 1/0.
-- **Stálá absence**: v detailu hráče (Soupiska) lze nastavit dny, kdy hráč pravidelně nemůže; nové tréninky v ten den mají předvyplněno „Omluven“.
+- **Stálá absence**: v detailu hráče (záložka Hráči) lze nastavit dny, kdy hráč pravidelně nemůže; nové tréninky v ten den mají předvyplněno „Omluven“.
 - **Vymazání všech dat** klubu (hráči, události, docházka, platby, zprávy…): spusťte `reset-data.sql` v SQL Editoru (účty a kategorie zůstanou). Nejdřív spusťte aktuální `schema.sql`.
 
 ## Kontrolní seznam před ostrým provozem (pilot U9)
