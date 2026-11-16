@@ -6,6 +6,17 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 16. 11. 2026 (přepínání týdnů)
+
+- V **📅 Přehledu** (rodič) a v **⚽ Trénincích** a **🏆 Zápasech** (trenér) je pod nadpisem lišta **‹ Tento týden 16. 11. – 22. 11. ›**. Šipkou › se přejde na příští týden a dál (až 12 týdnů dopředu), šipkou ‹ zpět. Tlačítko **↩ Zpět na tento týden** vrátí aktuální týden.
+- Výchozí zůstává aktuální týden Po–Ne, nový týden se sám přepne v pondělí.
+- Tréninky z rozvrhu hřišť se pro budoucí týden vytvoří, jakmile ho někdo otevře. Trenér v budoucím týdnu může trénink zrušit nebo přidat zápas či trénink ručně.
+- Karta „nejbližší akce s odpočtem“ se ukazuje jen u aktuálního týdne. Po přechodu na jinou záložku (Chat, Hráč…) se aplikace vrátí na aktuální týden.
+
+**V Supabase:** nic.
+
+---
+
 ## 8. 11. 2026 (mezera pod tlačítkem zpět)
 
 - Tlačítko **← Zápasy** (a další tlačítka zpět jako ← Tréninky, ← Zpět na zápas) už není nalepené na kartu pod ním, je pod ním malá mezera.

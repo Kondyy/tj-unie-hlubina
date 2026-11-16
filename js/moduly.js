@@ -53,8 +53,8 @@ class Calendar {
   /** Záložka "Přehled": nadcházející události + odehrané zápasy kategorie dítěte. */
   static view() {
     const team = Model.team(UI.kid), today = Dnes.parent(team);                // nahoře nejbližší akce s odpočtem (js/vzhled.js)
-    return `<div class="col">${today}<h2 style="margin-top:${today ? '18px' : '0'}">📅 Nadcházející · ${UI.kid} (${team})</h2>
-      ${Model.eventsOf(team).map(e => Calendar.eventCard(e)).join('') || Look.empty('cal', 'Tento týden nic', `${esc(UI.kid)} tento týden nemá žádný trénink ani zápas. Jakmile ho trenér přidá, objeví se tady.`)}${Calendar.history(team)}${Calendar.contacts(team)}</div>`;
+    return `<div class="col">${today}<h2 style="margin-top:${today ? '18px' : '0'}">📅 ${UI.wk ? 'Program' : 'Nadcházející'} · ${UI.kid} (${team})</h2>${Week.bar()}
+      ${Model.eventsOf(team).map(e => Calendar.eventCard(e)).join('') || Week.empty() || Look.empty('cal', 'V tomto týdnu nic', `${esc(UI.kid)} v tomto týdnu nemá žádný trénink ani zápas. Jakmile ho trenér přidá, objeví se tady.`)}${Calendar.history(team)}${Calendar.contacts(team)}</div>`;
   }
 
   /** Kontakty na trenéry kategorie: jméno, po rozkliknutí telefon a e-mail. */
@@ -348,13 +348,13 @@ class Attendance {
     if (se) return SubCoach.detail(se);                               // zástup za trenéra jiné kategorie
     if (!e) {                                                         // 1) seznam tréninků
       UI.attEvent = 0;
-      return `${Dnes.coach(team)}${Attendance.mine()}${OfflineQ.badge()}${SubCoach.list()}<h2>Tréninky ${team}</h2><div class="g2">${trainings.map(t => {
+      return `${Dnes.coach(team)}${Attendance.mine()}${OfflineQ.badge()}${SubCoach.list()}<h2>Tréninky ${team}</h2>${Week.bar()}<div class="g2">${trainings.map(t => {
         const k = Attendance.marked(t);
         return `<div class="card ev ${t.x ? 'x' : 't'}" ${t.x ? '' : `style="cursor:pointer" onclick="Attendance.open('${t.id}')"`}>
           <div class="pay"><b>⚽ ${Util.date(t.d)} · ${Util.timeRange(t)}</b><span class="pill ${t.x ? 'x' : k == count ? 'ok' : 'wa'}">${t.x ? 'Zrušeno' : k + '/' + count + ' označeno'}</span></div>
           <div class="mut">📍 ${esc(t.pl)}${t.sc ? ' · 🙋 zástup: ' + esc(t.c) : ''}</div>${Weather.line(t)}${t.x ? '' : '<div class="mut">Klepnutím otevřete docházku →</div>'}
           <div class="row" style="margin-top:8px"><button class="btn" onclick="event.stopPropagation();Events.cancel('${t.id}')">${t.x ? 'Obnovit trénink' : 'Zrušit trénink'}</button><button class="btn" style="flex:none;color:var(--r)" onclick="event.stopPropagation();Events.remove('${t.id}')">🗑 Smazat</button></div></div>`;
-      }).join('') || Look.empty('ball', 'Zatím žádné tréninky', 'Tento týden zatím žádný trénink. Tréninky se přidají automaticky podle rozvrhu hřišť, který nastavuje vedení, nebo je přidejte ručně níže.')}</div>
+      }).join('') || Week.empty() || Look.empty('ball', 'Zatím žádné tréninky', 'V tomto týdnu zatím žádný trénink. Tréninky se přidají automaticky podle rozvrhu hřišť, který nastavuje vedení, nebo je přidejte ručně níže.')}</div>
       <h2>+ Přidat trénink ručně</h2><div class="card">
         <div class="row"><select id="tr-day">${CONFIG.days.map((n, i) => `<option value="${i}">${Util.date(i)}</option>`).join('')}</select>
         </div>
@@ -445,14 +445,14 @@ class Events {
     const team = UI.user.team, list = Model.eventsOf(team).filter(e => e.k == 'z'), e = list.find(x => x.id == UI.matchEvent);
     if (!e) {
       UI.matchEvent = 0;
-      return `<h2 style="margin-top:0">Zápasy ${esc(team)}</h2><div class="g2">${list.map(m => {
+      return `<h2 style="margin-top:0">Zápasy ${esc(team)}</h2>${Week.bar()}<div class="g2">${list.map(m => {
         const res = Events.result(m), noms = (DB.nominations[m.id] || []).length;
         return `<div class="card ev ${m.x ? 'x' : 'z'}" style="cursor:pointer" onclick="Events.openMatch('${m.id}')">
           <div class="pay"><b>${m.tour ? '🏅 Turnaj: ' : '🏆 vs. '}${esc(m.o)}</b><span class="pill ${m.x ? 'x' : m.fin ? 'ok' : 'z'}">${m.x ? 'Zrušeno' : m.fin ? 'Odehráno' : Util.date(m.d)}</span></div>
           <div class="mut">${m.m ? `<b class="srz">🤝 Sraz ${esc(m.m)}</b> · výkop ` : ''}${esc(m.t)} · 📍 ${esc(m.pl)}</div>
           <div class="mut">${m.fin ? '🏁 ' + (res ? Events.score(res) + ' · ' : '') + 'ukončeno · hrálo ' + m.lu.length + ' hráčů'
             : m.tour ? (Tour.games(m).length ? '🏁 ' + Tour.games(m).length + ' utkání' + (m.rank ? ' · ' + esc(m.rank) + '. místo' : '') : 'Klepnutím otevřete turnaj →') : res ? '🏁 ' + Events.score(res) : noms ? (m.nc ? '🔒 Nominace uzavřena' : 'Nominace rozpracována') + ' · ' + noms + ' hráčů · ' + Events.confirmSummary(m) : 'Klepnutím otevřete zápas →'}</div></div>`;
-      }).join('') || Look.empty('trophy', 'Zatím žádné zápasy', 'Tento týden zatím žádný zápas. Přidejte ho formulářem níže.')}</div>${Events.form()}`;
+      }).join('') || Week.empty() || Look.empty('trophy', 'Zatím žádné zápasy', 'V tomto týdnu zatím žádný zápas. Přidejte ho formulářem níže.')}</div>${Events.form()}`;
     }
     if (UI.closeEvent == e.id && UI.cl) return Events.closeView(e);                     // ukončení zápasu: docházka + výsledek
     if (e.fin && !e.x) return `<button class="btn back" onclick="Events.closeMatch()">← Zápasy</button>${Events.resultView(e, true)}`;   // ukončený zápas = výsledek

@@ -108,7 +108,7 @@ class App {
   }
 
   // ----- navigace -----
-  static go(tab)         { UI.tab = tab; UI.bell = false; UI.more = false; App.render(); }
+  static go(tab)         { UI.tab = tab; UI.bell = false; UI.more = false; App.render(); if (UI.wk && !Week.TABS.includes(tab)) Week.go(0); }   // jinde se pracuje s aktuálním týdnem
   static toggleMore()    { UI.more = !UI.more; App.render(); }
   static toggleBell()    { UI.bell = !UI.bell; App.render(); }
   /** Rodič přepne dítě → přepne se celý dashboard i chat. */

@@ -142,6 +142,8 @@ const UI = {
   modal: null,           // klíč události, pro kterou je otevřené okno omluvy
   reason: '',            // vybraný důvod omluvy
   qr: null,              // index příspěvku, u kterého je zobrazený QR kód
+  wk: 0,                 // zobrazený týden: 0 = aktuální, 1 = příští … (šipky ‹ › u Přehledu, Tréninků a Zápasů)
+  wkBusy: false,         // právě se načítá jiný týden
   attEvent: 0,           // trenér: otevřený trénink v docházce (0 = seznam tréninků)
   matchEvent: 0,         // trenér: otevřený zápas (0 = seznam zápasů)
   nomEvent: 0,           // trenér: zápas s rozbalenou nominací
@@ -198,10 +200,10 @@ class Util {
   static q(s) { return Util.esc(String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")); }
   /** Text bez diakritiky a malými písmeny – pro hledání. */
   static norm(s) { return String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim(); }
-  /** Pondělí zobrazovaného týdne (aktuální týden Po–Ne, nový týden se ukáže až v pondělí). */
+  /** Pondělí zobrazovaného týdne (aktuální týden Po–Ne, nový týden se ukáže až v pondělí; UI.wk posune o celé týdny dopředu). */
   static weekStart() {
     const d = new Date(); d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() - (d.getDay() + 6) % 7);
+    d.setDate(d.getDate() - (d.getDay() + 6) % 7 + 7 * (UI.wk || 0));
     return d;
   }
   /** Datum dne v zobrazovaném týdnu: 0 → objekt Date pro pondělí. */

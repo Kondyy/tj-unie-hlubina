@@ -564,3 +564,41 @@ class Captcha {
     DB.settings.turnstile_sitekey = v; Captcha.key = v; Admin.msg(v ? '✔ Klíč uložen. Teď zapněte CAPTCHA v Supabase (viz README).' : '✔ Ochrana vypnuta – nezapomeňte ji vypnout i v Supabase.', true);
   }
 }
+
+
+/* ---------------------------------------------------------------------
+   Week – přepínání týdnů ‹ › v Přehledu (rodič), Trénincích a Zápasech (trenér).
+   Výchozí je aktuální týden Po–Ne; dopředu lze až 12 týdnů (víc databáze tréninky z rozvrhu nevytvoří).
+   --------------------------------------------------------------------- */
+class Week {
+  static MAX = 12;
+  static TABS = ['cal', 'att', 'ev'];       // záložky s přepínačem; jinde se aplikace vrátí na aktuální týden
+  static seq = 0;
+  static label(n) { return n == 0 ? 'Tento týden' : n == 1 ? 'Příští týden' : `Za ${n} ${n < 5 ? 'týdny' : 'týdnů'}`; }
+  /** Lišta ‹ Tento týden 16. 11. – 22. 11. › (+ návrat na aktuální týden). */
+  static bar() {
+    const n = UI.wk, a = Util.dayDate(0), b = Util.dayDate(6), f = x => `${x.getDate()}. ${x.getMonth() + 1}.`;
+    return `<div class="wknav"><button class="ib" ${n <= 0 ? 'disabled' : ''} onclick="Week.go(${n - 1})" aria-label="Předchozí týden">‹</button>
+      <div class="wkt"><b>${Week.label(n)}</b><span>${f(a)} – ${f(b)}</span></div>
+      <button class="ib" ${n >= Week.MAX ? 'disabled' : ''} onclick="Week.go(${n + 1})" aria-label="Další týden">›</button></div>
+      ${n ? '<button class="chip wkback" onclick="Week.go(0)">↩ Zpět na tento týden</button>' : ''}`;
+  }
+  /** Místo prázdného seznamu při načítání týdne. */
+  static empty() { return UI.wkBusy ? '<div class="card mut">⏳ Načítám týden…</div>' : ''; }
+  /** Přepne na týden n (0 = aktuální) a načte jeho tréninky a zápasy. */
+  static async go(n) {
+    n = Math.max(0, Math.min(Week.MAX, n));
+    if (n == UI.wk && !UI.wkBusy) return;
+    const my = ++Week.seq, back = {wk: UI.wk, ev: DB.events, ep: DB.eplans};
+    UI.wk = n; UI.wkBusy = true; UI.attEvent = 0; UI.matchEvent = 0; UI.nomEvent = 0; UI.meetEdit = 0;
+    DB.events = []; App.render();
+    try { await Promise.all([Sync.loaders.events(), Sync.loaders.eplans()]); }
+    catch (e) {
+      if (my != Week.seq) return;
+      Object.assign(UI, {wk: back.wk, wkBusy: false}); DB.events = back.ev; DB.eplans = back.ep;   // bez internetu zůstane původní týden
+      return Sync.toast('Týden se nepodařilo načíst – zkontrolujte připojení.');
+    }
+    if (my != Week.seq) return;
+    UI.wkBusy = false; App.render();
+  }
+}
