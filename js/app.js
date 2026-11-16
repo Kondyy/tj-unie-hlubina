@@ -25,12 +25,14 @@ const TABS = {
        {id:'set',  label:'⚙ Nastavení',            view:() => Settings.view()} ]
 };
 
-/* Správce = vedení + všechny trenérské záložky (za kategorii vybranou v hlavičce) */
-TABS.a = [...TABS.v.filter(t => t.id != 'set'), ...TABS.c.filter(t => t.id != 'plan' && t.id != 'set'), TABS.v.find(t => t.id == 'set')];
+/* Docházka trenérů po měsících (šéftrenér mládeže a správce) */
+const TAB_TR = {id:'tr', label:'🧢 Trenéři', view:() => CoachMonth.view()};
+
+/* Správce = vedení (+ Trenéři hned za Docházkou) + všechny trenérské záložky (za kategorii vybranou v hlavičce) */
+TABS.a = [...TABS.v.filter(t => t.id != 'set').flatMap(t => t.id == 'ovr' ? [t, TAB_TR] : [t]), ...TABS.c.filter(t => t.id != 'plan' && t.id != 'set'), TABS.v.find(t => t.id == 'set')];
 
 /* Šéftrenér mládeže = trenérské záložky jen ke čtení (kategorii přepíná v hlavičce jako správce) + docházka trenérů po měsících */
-TABS.s = [TABS.c.find(t => t.id == 'att'), TABS.c.find(t => t.id == 'ev'),
-          {id:'tr', label:'🧢 Trenéři', view:() => CoachMonth.view()},
+TABS.s = [TABS.c.find(t => t.id == 'att'), TABS.c.find(t => t.id == 'ev'), TAB_TR,
           ...TABS.c.filter(t => !['att', 'ev'].includes(t.id))];
 
 /* ---------------------------------------------------------------------

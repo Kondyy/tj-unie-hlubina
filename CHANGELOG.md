@@ -6,6 +6,14 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 16. 11. 2026 (záložka Trenéři i pro správce)
+
+- Správce má také záložku **🧢 Trenéři** (hned za Docházkou): docházka trenérů za zvolený měsíc, přepínání měsíců šipkami, filtr kategorie a výkaz do Excelu.
+
+**V Supabase:** nic.
+
+---
+
 ## 16. 11. 2026 (fotky a soubory v chatu)
 
 - Do chatu kategorie, chatu trenérů i soukromých zpráv jde přidat **fotku nebo soubor**: tlačítko **📎** vedle pole pro zprávu (na telefonu nabídne fotoaparát, galerii i soubory). Před odesláním je vidět náhled, křížkem jde příloha zrušit; text ke zprávě je nepovinný.
