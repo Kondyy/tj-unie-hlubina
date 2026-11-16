@@ -583,7 +583,7 @@ class Usage {
     const bar = (v, max, l) => { const p = Math.min(100, Math.round(v / max * 100)); return `<div class="pay" style="margin-top:8px"><span>${l}</span><b>${Usage.mb(v)} z ${Usage.mb(max)} · ${p} %</b></div>
       <div class="bar"><i style="width:${Math.max(p, 1)}%;background:var(--${p > 80 ? 'r' : p > 60 ? 'y' : 'g'})"></i></div>`; };
     return `<div class="card"><b>📈 Využití bezplatného tarifu</b>
-      ${!s ? '<div class="mut">Načítám…</div>' : s.err ? `<div class="warn">${esc(s.err)}</div>` : `${bar(s.db_bytes, 500e6, '🗄 Databáze')}${bar(s.storage_bytes, 1e9, '🖼 Fotky (' + s.storage_files + ' souborů)')}
+      ${!s ? '<div class="mut">Načítám…</div>' : s.err ? `<div class="warn">${esc(s.err)}</div>` : `${bar(s.db_bytes, 500e6, '🗄 Databáze')}${bar(s.storage_bytes, 1e9, '🖼 Fotky a přílohy (' + s.storage_files + ' souborů)')}
         <div class="mut" style="margin-top:8px">${s.players} hráčů · ${s.users} účtů · ${s.events} akcí · ${s.attendance} záznamů docházky · ${s.chat} zpráv chatu · ${s.dm} soukromých zpráv · ${s.notifications} upozornění</div>
         <div class="mut" style="margin-top:6px">Přenos dat (limit 5 GB měsíčně) ukazuje Supabase → Project → Usage.</div>`}</div>`;
   }
