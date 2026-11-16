@@ -167,6 +167,7 @@ const UI = {
   plAtt: '',             // hráči: filtr docházky g / y / r ('' = jakákoli)
   chatTeam: '',          // chat: vybraná kategorie
   rxOpen: 0,             // chat: u které zprávy je otevřený výběr reakce (+)
+  att: null, attBusy: '', // chat: vybraná příloha před odesláním (ChatFiles) a hláška při úpravě / nahrávání
   chatSub: 'team',       // chat: 'team' (chat kategorie) | 'club' (zprávy od klubu)
   focusChat: false,      // po odeslání vrátit kurzor do pole zprávy
   msgKind: 'all',        // vedení/zprávy: příjemce all | trainers | user

@@ -781,6 +781,98 @@ end $$;
 drop trigger if exists dm_after_insert on public.direct_messages;
 create trigger dm_after_insert after insert on public.direct_messages for each row execute function public.dm_after_insert();
 
+-- ---------------------------------------------------------------------
+-- Přílohy ve zprávách (fotky a soubory) – chat kategorie, chat trenérů i soukromé zprávy.
+-- Soubor leží v soukromém úložišti Supabase (bucket "chat"), ve zprávě je jen popis přílohy (att):
+--   {"p": cesta, "n": původní název, "s": velikost v bajtech, "m": typ (MIME), "w"/"h": rozměry fotky, "c": 1 = text zprávy je jen popisek}
+-- Cesty:  t/<kategorie>/<id odesílatele>/<čas>-<název>   (chat kategorie, i 'T-U9' = chat trenérů)
+--         d/<id odesílatele>/<id příjemce>/<čas>-<název>  (soukromá zpráva)
+-- Číst smí, kdo vidí daný chat (can_chat) nebo je odesílatel/příjemce; nahrát jen do vlastní složky a tam, kam smí psát.
+-- Fotky aplikace před odesláním zmenší (max. 1600 px, JPEG); limit souboru je 10 MB.
+-- ---------------------------------------------------------------------
+alter table public.chat_messages   add column if not exists att jsonb;
+alter table public.direct_messages add column if not exists att jsonb;
+
+-- Příloha musí ležet ve složce odesílatele v tomtéž chatu (nelze podstrčit cizí soubor)
+create or replace function public.msg_att_check() returns trigger
+language plpgsql security definer set search_path = public as
+$$ declare pre text; p text; begin
+  if new.att is null then return new; end if;
+  if tg_table_name = 'chat_messages' then pre := 't/' || new.team || '/' || auth.uid()::text || '/';
+  else pre := 'd/' || auth.uid()::text || '/' || new.to_id::text || '/'; end if;
+  p := case when jsonb_typeof(new.att) = 'object' then coalesce(new.att ->> 'p', '') else '' end;
+  if left(p, length(pre)) <> pre or length(p) <= length(pre) or position('/' in substr(p, length(pre) + 1)) > 0
+     or length(coalesce(new.att ->> 'n', '')) not between 1 and 200 or length(new.att::text) > 1000 then
+    raise exception 'Neplatná příloha zprávy.';
+  end if;
+  return new;
+end $$;
+drop trigger if exists chat_att_check on public.chat_messages;
+create trigger chat_att_check before insert or update of att on public.chat_messages for each row execute function public.msg_att_check();
+drop trigger if exists dm_att_check on public.direct_messages;
+create trigger dm_att_check before insert or update of att on public.direct_messages for each row execute function public.msg_att_check();
+
+-- Smí přihlášený přílohu číst?
+create or replace function public.chat_file_visible(p text) returns boolean
+language sql stable security definer set search_path = public as
+$$ select case split_part(p, '/', 1)
+     when 't' then public.can_chat(split_part(p, '/', 2))
+     when 'd' then (select auth.uid()::text) in (split_part(p, '/', 2), split_part(p, '/', 3))
+     else false end $$;
+
+-- Smí přihlášený přílohu nahrát? (jen do své složky a do chatu, kam smí psát)
+create or replace function public.chat_file_writable(p text) returns boolean
+language sql stable security definer set search_path = public as
+$$ select coalesce(array_length(string_to_array(p, '/'), 1) = 4 and case split_part(p, '/', 1)
+     when 't' then split_part(p, '/', 3) = (select auth.uid()::text) and public.can_chat(split_part(p, '/', 2))
+     when 'd' then split_part(p, '/', 2) = (select auth.uid()::text)
+                   and split_part(p, '/', 3) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                   and public.dm_can_send(auth.uid(), split_part(p, '/', 3)::uuid)
+     else false end, false) $$;
+
+-- Smazat smí odesílatel (zrušené odeslání) a správce (úklid souborů po smazaných zprávách)
+create or replace function public.chat_file_deletable(p text) returns boolean
+language sql stable security definer set search_path = public as
+$$ select public.is_admin() or case split_part(p, '/', 1)
+     when 't' then split_part(p, '/', 3) = (select auth.uid()::text)
+     when 'd' then split_part(p, '/', 2) = (select auth.uid()::text)
+     else false end $$;
+
+-- Soubory, ke kterým už žádná zpráva není (zprávy smazalo automatické mazání chatu) – aplikace správce je smaže z úložiště.
+-- (Přímo z SQL soubory v úložišti mazat nejdou, proto to dělá aplikace přes Storage API.)
+create or replace function public.chat_orphan_files() returns setof text
+language plpgsql stable security definer set search_path = public as
+$$ begin
+  if not public.is_admin() then return; end if;
+  return query select o.name from storage.objects o
+    where o.bucket_id = 'chat' and o.created_at < now() - interval '1 day'
+      and not exists (select 1 from public.chat_messages m where m.att ->> 'p' = o.name)
+      and not exists (select 1 from public.direct_messages d where d.att ->> 'p' = o.name)
+    limit 200;
+end $$;
+
+do $$ begin
+  if to_regclass('storage.objects') is not null then
+    insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+      values ('chat', 'chat', false, 10485760, array[
+        'image/jpeg','image/png','image/webp','image/gif','image/heic','image/heif',
+        'application/pdf','text/plain','text/csv',
+        'application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-powerpoint','application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'application/vnd.oasis.opendocument.text','application/vnd.oasis.opendocument.spreadsheet',
+        'application/zip','application/x-zip-compressed',
+        'video/mp4','video/quicktime','audio/mpeg','audio/mp4','audio/x-m4a'])
+      on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+    drop policy if exists chatf_select on storage.objects;
+    drop policy if exists chatf_insert on storage.objects;
+    drop policy if exists chatf_delete on storage.objects;
+    create policy chatf_select on storage.objects for select to authenticated using (bucket_id = 'chat' and public.chat_file_visible(name));
+    create policy chatf_insert on storage.objects for insert to authenticated with check (bucket_id = 'chat' and public.chat_file_writable(name));
+    create policy chatf_delete on storage.objects for delete to authenticated using (bucket_id = 'chat' and public.chat_file_deletable(name));
+  end if;
+end $$;
+
 -- Zprávy vedení: odesílatele doplní databáze
 create or replace function public.club_before_insert() returns trigger
 language plpgsql security definer set search_path = public as
