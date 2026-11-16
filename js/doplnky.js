@@ -127,6 +127,7 @@ class Bring {
     return `<div style="margin-top:8px"><b>🎒 S sebou:</b> <span style="white-space:pre-line">${esc(t)}</span></div>`;
   }
   static coach(e) {
+    if (Model.ro(UI.user)) { const t = String(e.br || '').trim(); return t ? `<div class="card" style="margin-top:10px"><b>🎒 Co s sebou</b><div style="white-space:pre-line">${esc(t)}</div></div>` : ''; }
     return `<div class="card" style="margin-top:10px"><b>🎒 Co s sebou</b><div class="mut">Rodiče to uvidí u akce jako poznámku.</div>
       <div class="row" style="margin-top:6px"><input id="br-${e.id}" value="${esc(e.br || '')}" placeholder="${esc(Bring.DEF)}" autocomplete="off"><button class="btn" style="flex:none" onclick="Bring.save(${e.id})">Uložit</button></div>
       ${e.br ? '' : `<button class="chip" style="margin-top:6px" onclick="$('#br-${e.id}').value=Bring.DEF">Vložit výchozí seznam</button>`}</div>`;
@@ -243,7 +244,7 @@ class Tour {
 class SubCoach {
   static coaches() { return Dm.contacts().filter(c => (c.role == 'c' || c.role == 'a') && c.id != UI.user.id); }
   static card(e) {
-    if (e.x) return '';
+    if (e.x || Model.ro(UI.user)) return '';                          // šéftrenér mládeže zástup nenastavuje
     const L = SubCoach.coaches();
     return `<div class="card" style="margin-top:10px"><b>🙋 Zástup</b><div class="mut">Nemůžete přijít? Vyberte trenéra, který vás zastoupí. Dostane upozornění, uvidí akci, plán a zapíše docházku.</div>
       <select id="sc-${e.id}" onchange="SubCoach.set(${e.id},this.value)"><option value="">— bez zástupu —</option>${L.map(c => `<option value="${c.id}" ${c.id == e.sc ? 'selected' : ''}>${esc(c.name)}${c.team ? ' (' + esc(c.team) + ')' : ''}</option>`).join('')}</select></div>`;
@@ -291,7 +292,7 @@ class Report {
   static months() { const d = new Date(), L = []; for (let i = 0; i < 12; i++) L.push(Util.iso(new Date(d.getFullYear(), d.getMonth() - i, 1)).slice(0, 7)); return L; }
   static coaches() {
     const u = UI.user;
-    return Model.mgmt(u) ? Object.values(DB.users).filter(x => x.r == 'c' || (x.r == 'a' && x.id == u.id)).sort((a, b) => (a.team || '').localeCompare(b.team || '') || a.name.localeCompare(b.name, 'cs')) : [u];
+    return Model.mgmt(u) || Model.ro(u) ? Object.values(DB.users).filter(x => x.r == 'c' || (x.r == 'a' && x.id == u.id)).sort((a, b) => (a.team || '').localeCompare(b.team || '') || a.name.localeCompare(b.name, 'cs')) : [u];
   }
   static row(c, m) {
     let t = 0, z = 0; const days = [];
@@ -320,6 +321,51 @@ class Report {
     XLSX.writeFile(wb, 'vykaz-treneru-' + m + '.xlsx');
     Settings.msg('✔ Výkaz stažen.', true);
   }
+}
+
+
+/* ---------------------------------------------------------------------
+   CoachMonth – záložka „Trenéři“ šéftrenéra mládeže: docházka trenérů za zvolený měsíc (šipkami ‹ › jiný měsíc)
+   Účast = tréninky, kde trenér potvrdil „Zúčastním se“; proběhlý trénink jeho kategorie bez potvrzení = absence
+   (stejně jako v kartě „Moje absence a docházka“ trenéra). Zápasy a hodiny jako v měsíčním výkazu (Report).
+   --------------------------------------------------------------------- */
+class CoachMonth {
+  static now() { return Util.iso(new Date()).slice(0, 7); }
+  static month() { return UI.coMonth || CoachMonth.now(); }
+  /** '2026-11' posunutý o d měsíců. */
+  static shift(m, d) { const [y, mo] = m.split('-').map(Number); return Util.iso(new Date(y, mo - 1 + d, 1)).slice(0, 7); }
+  static coaches() {
+    return Object.values(DB.users).filter(x => x.r == 'c' && (!UI.coTeam || x.team == UI.coTeam))
+      .sort((a, b) => (a.team || '').localeCompare(b.team || '', 'cs', {numeric: true}) || a.name.localeCompare(b.name, 'cs'));
+  }
+  static view() {
+    const m = CoachMonth.month(), cur = CoachMonth.now();
+    const L = CoachMonth.coaches().map(x => ({x, st: Model.coachStats(x.id, m), r: Report.row(x, m)}));
+    const W = L.filter(o => o.st.t), avg = W.length ? Math.round(W.reduce((s, o) => s + o.st.pct, 0) / W.length) : 0;
+    const teams = [...new Set(Object.values(DB.users).filter(x => x.r == 'c' && x.team).map(x => x.team))].sort((a, b) => a.localeCompare(b, 'cs', {numeric: true}));
+    if (UI.coTeam && !teams.includes(UI.coTeam)) UI.coTeam = '';
+    return `<div class="col cmn"><div class="card"><div class="pay"><b>🧢 Docházka trenérů</b><span class="pill z">${L.length} trenérů</span></div>
+        <div class="mut">Účast = tréninky, u kterých trenér potvrdil „Zúčastním se“. Proběhlý trénink jeho kategorie bez potvrzení se počítá jako absence.</div></div>
+      <div class="wknav"><button class="ib" onclick="CoachMonth.go(-1)" aria-label="Předchozí měsíc">‹</button>
+        <div class="wkt"><b>${esc(Report.label(m))}</b><span>${W.length ? 'průměrná účast ' + avg + ' %' : 'bez údajů'}</span></div>
+        <button class="ib" ${m >= cur ? 'disabled' : ''} onclick="CoachMonth.go(1)" aria-label="Další měsíc">›</button></div>
+      ${m != cur ? '<button class="chip wkback" onclick="CoachMonth.set(\'\')">↩ Zpět na tento měsíc</button>' : ''}
+      ${teams.length > 1 ? `<div class="row" style="margin:0 0 6px">${['', ...teams].map(t => `<button class="chip ${(UI.coTeam || '') == t ? 'on' : ''}" onclick="CoachMonth.team('${Util.q(t)}')">${t ? esc(t) : 'Všechny kategorie'}</button>`).join('')}</div>` : ''}
+      ${L.map(CoachMonth.card).join('') || '<div class="card mut">Zatím žádní trenéři.</div>'}
+      <button class="btn" style="width:100%;margin-top:8px" onclick="CoachMonth.export()">⬇ Výkaz za ${esc(Report.label(m))} do Excelu</button></div>`;
+  }
+  static card({x, st, r}) {
+    const abs = st.abs.filter(Boolean);
+    return `<div class="card"><div class="cmrow">${Util.userAvatar(x, 40)}<div style="flex:1;min-width:0"><b>${esc(x.name)}</b> <span class="mut">${esc(x.team || '')}</span>
+        ${st.t ? `<div class="bar"><i style="width:${st.pct}%;background:${Util.attBg(st.pct)}"></i></div>` : ''}</div>
+        <div style="text-align:right">${st.t ? `<b class="${Util.attCls(st.pct)}">${st.pct} %</b><div class="mut">${st.p}/${st.t} tréninků</div>` : '<span class="mut">bez tréninků</span>'}</div></div>
+      <div class="mut cmabs">${r.z ? r.z + (r.z == 1 ? ' zápas' : r.z < 5 ? ' zápasy' : ' zápasů') + ' · ' : ''}${String(r.h).replace('.', ',')} h
+        ${abs.length ? ` · <span class="cr">absence: ${abs.slice().sort().map(d => esc(Util.isoShort(d))).join(', ')}</span>` : st.t ? ' · <span class="cg">bez absence</span>' : ''}</div></div>`;
+  }
+  static go(d) { const m = CoachMonth.shift(CoachMonth.month(), d); CoachMonth.set(m > CoachMonth.now() ? '' : m); }
+  static set(m) { UI.coMonth = m == CoachMonth.now() ? '' : m; App.render(); }
+  static team(t) { UI.coTeam = t; App.render(); }
+  static export() { UI.repMonth = CoachMonth.month(); Report.export(); }
 }
 
 

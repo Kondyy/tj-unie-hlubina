@@ -1,6 +1,6 @@
 # TJ Unie Hlubina – klubová aplikace
 
-Webová aplikace (`index.html` + `css/` + `js/`) napojená na Supabase. Role: **Rodič, Trenér, Vedení, Správce** (Správce smí „všechno“ – i být trenérem kterékoli kategorie a spravovat účty vedení/správců).
+Webová aplikace (`index.html` + `css/` + `js/`) napojená na Supabase. Role: **Rodič, Trenér, Šéftrenér mládeže, Vedení, Správce** (Správce smí „všechno“ – i být trenérem kterékoli kategorie a spravovat účty vedení/správců; Šéftrenér mládeže vidí vše jako trenér ve všech kategoriích, ale nic neupravuje, a má přehled docházky trenérů po měsících).
 
 | Soubor | K čemu |
 |---|---|

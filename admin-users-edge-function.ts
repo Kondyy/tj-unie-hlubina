@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
   const team = String(b.team ?? "").trim();
   const password = String(b.password ?? "");
   const phone = String(b.phone ?? "").trim().slice(0, 40);
-  const ROLES = ["p", "c", "v", "a"];
+  const ROLES = ["p", "c", "v", "a", "s"];   // s = šéftrenér mládeže (bez kategorie, přepíná si je v aplikaci)
   // role vedení a správce smí zakládat, měnit a mazat jen správce
   const needsAdmin = (r: string) => r === "v" || r === "a";
 

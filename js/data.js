@@ -10,18 +10,20 @@ class Model {
   static event(id)       { return DB.events.find(e => e.id == id); }
   /** Docházka trenéra na tréninky: {p: přítomen, t: celkem, pct, abs: [data absencí od nejnovější]}.
    *  Počítají se tréninky s potvrzeným „přijdu“ / „nemohu“ a navíc proběhlé tréninky jeho kategorie
-   *  (zapsaná docházka hráčů), kde účast nepotvrdil – ty se počítají jako absence, aby nechyběly v celkovém počtu. */
-  static coachStats(uid) {
-    const u0 = DB.users[uid] || {}; let p = u0.ap || 0, t = u0.at || 0; const abs = [];      // dosavadní docházka z importu + potvrzené tréninky
+   *  (zapsaná docházka hráčů), kde účast nepotvrdil – ty se počítají jako absence, aby nechyběly v celkovém počtu.
+   *  month ('2026-11'): jen tréninky toho měsíce (bez dřívější docházky z importu). */
+  static coachStats(uid, month) {
+    const u0 = DB.users[uid] || {}, inM = d => !month || String(d || '').startsWith(month);
+    let p = month ? 0 : u0.ap || 0, t = month ? 0 : u0.at || 0; const abs = [];      // dosavadní docházka z importu + potvrzené tréninky
     Object.keys(DB.coachAtt).forEach(k => {
       if (!k.startsWith(uid + '|')) return;
       const ev = DB.coachEv[k] || {k: 't', d: ''};
-      if (ev.k != 't') return;
+      if (ev.k != 't' || !inM(ev.d)) return;
       t++; if (DB.coachAtt[k] == 'y') p++; else abs.push(ev.d);
     });
     if (u0.r == 'c' && u0.team) {
       const held = new Set(Object.keys(DB.att).map(k => k.slice(0, k.indexOf('|'))));          // tréninky, kde se zapsala docházka hráčů
-      DB.pastT.forEach(e => { if (e.tm == u0.team && held.has(String(e.id)) && !DB.coachAtt[uid + '|' + e.id]) { t++; abs.push(e.d); } });
+      DB.pastT.forEach(e => { if (e.tm == u0.team && inM(e.d) && held.has(String(e.id)) && !DB.coachAtt[uid + '|' + e.id]) { t++; abs.push(e.d); } });
     }
     abs.sort().reverse();
     return {p, t, pct: t ? Math.round(p / t * 100) : 0, abs};
@@ -38,8 +40,10 @@ class Model {
   static debt(m) { return DB.payItems.reduce((s, x, i) => s + (m.p[i] ? 0 : x.a), 0); }
 
   /** Kategorie, do jejichž chatu uživatel patří (rodič = kategorie dětí, trenér = svoje, vedení = žádná). */
-  /** Trenér nebo správce (ten pracuje za trenéra zvolené kategorie). */
-  static coachLike(u) { return u.r == 'c' || u.r == 'a'; }
+  /** Trenér, správce (pracuje za trenéra zvolené kategorie) nebo šéftrenér mládeže (zvolenou kategorii si prohlíží). */
+  static coachLike(u) { return u.r == 'c' || u.r == 'a' || u.r == 's'; }
+  /** Šéftrenér mládeže: vidí vše jako trenér, ale nic neupravuje. */
+  static ro(u) { return !!u && u.r == 's'; }
   /** Vedení nebo správce. */
   static mgmt(u) { return u.r == 'v' || u.r == 'a'; }
   static teamsOf(u) { return u.r == 'p' ? [...new Set(u.kids.map(k => Model.team(k)).filter(Boolean))] : Model.coachLike(u) ? [u.team] : []; }
@@ -346,7 +350,7 @@ class Sync {
       DB.users = {};
       pr.forEach(p => DB.users[p.id] = {id: p.id, r: p.role, name: p.name || p.email || '(bez jména)', email: p.email || '', phone: p.phone || '', mc: !!p.must_change_password, ph: p.photo || '', ap: p.att_present || 0, at: p.att_total || 0, role: CONFIG.roles[p.role],
         consent: !('consent_at' in p) || !!p.consent_at, pc: !!p.photo_consent,      // (bez sloupce = SQL ještě nespuštěno → souhlas se nevyžaduje)
-        team: p.role == 'a' ? (UI.asTeam || CONFIG.planner.teams[0] || '') : (p.team || ''),
+        team: p.role == 'a' || p.role == 's' ? (UI.asTeam || CONFIG.planner.teams[0] || '') : (p.team || ''),
         kids: lk.filter(l => l.parent_id == p.id).map(l => (Model.byId(l.player_id) || {}).n).filter(Boolean).sort()});
       if (UI.user && DB.users[Sync.me]) {                              // přihlášený: obnovit odkaz a případně změněné děti
         UI.user = DB.users[Sync.me];

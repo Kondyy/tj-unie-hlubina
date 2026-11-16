@@ -6,6 +6,18 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 16. 11. 2026 (role Šéftrenér mládeže)
+
+- Nová role **Šéftrenér mládeže**. Vidí všechno jako trenér kategorie (tréninky, zápasy, docházku, hráče, rodiče, poznámky, rozvrh hřišť, chat), ale **nic neupravuje**: tlačítka pro přidání, zrušení či smazání tréninku a zápasu, docházku, nominace, výsledky a úpravy hráčů nevidí a pole má zamčená. Zápis mu zakazuje i databáze (RLS), nejen aplikace.
+- Kategorii přepíná v hlavičce stejně jako Správce.
+- Nová záložka **🧢 Trenéři**: docházka všech trenérů za zvolený měsíc (účast v %, počet tréninků, zápasy, hodiny, data absencí), šipkami ‹ › se přepíná na jiné měsíce, filtr podle kategorie a výkaz do Excelu.
+- Smí psát do chatů kategorií a soukromé zprávy trenérům, vedení i rodičům.
+- Účet zakládá Vedení nebo Správce v záložce **Uživatelé** (role „Šéftrenér mládeže“, bez kategorie).
+
+**V Supabase:** spustit celý `schema.sql` v SQL Editoru a znovu nasadit Edge Function **admin-users** (nový kód z `admin-users-edge-function.ts`).
+
+---
+
 ## 16. 11. 2026 (reakce jako na WhatsAppu)
 
 - Pod zprávou už nejsou pořád vidět oba palce. Vpravo dole vedle času je jen malé **+**. Po klepnutí se ukáže nabídka **👍 👎**, klepnutím na palec se reakce uloží a nabídka zavře.

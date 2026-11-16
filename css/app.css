@@ -352,3 +352,12 @@ html.big h2{font-size:24px}
 .wknav .wkt{flex:1;text-align:center;display:flex;flex-direction:column;line-height:1.2}
 .wknav .wkt span{color:var(--mut);font-size:13px}
 .wkback{display:block;margin:-2px auto 12px}
+/* Šéftrenér mládeže: obsah jen ke čtení (ovládání, které by něco měnilo, se skryje / zamkne) */
+.ro .btn:disabled,.ro .chip:disabled{display:none}
+.ro .pt:disabled{cursor:default}
+.ro input:disabled,.ro select:disabled,.ro textarea:disabled{opacity:.85;cursor:default}
+.robadge{display:inline-block;margin:0 0 10px;font-size:13px}
+.cmn .wknav{margin-bottom:10px}
+.cmrow{display:flex;gap:10px;align-items:center}
+.cmrow .bar{margin-top:4px}
+.cmabs{margin-top:6px;font-size:13px}

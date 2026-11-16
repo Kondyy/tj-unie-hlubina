@@ -77,7 +77,7 @@ const CONFIG = {
   attGood: 70,                              // docházka od této hodnoty (%) je zelená, od attMid žlutá, pod ní červená
   attMid: 40,
   venues: ['Hřiště A','Hřiště B – Umělka','Hřiště C – Loučka','Hala'],                      // místa pro nové události
-  roles: {p:'Rodič', c:'Trenér', v:'Vedení', a:'Správce'},                            // názvy rolí
+  roles: {p:'Rodič', c:'Trenér', v:'Vedení', a:'Správce', s:'Šéftrenér mládeže'},                            // názvy rolí
   excuseReasons: ['Nemoc','Škola','Rodinné důvody'],                    // důvody omluvy
   noteTags: {g:'🟢 Pochvala', r:'🔴 Kázeň', y:'🟡 Zranění'},            // štítky trenérského deníku
   docStatus: {ok:['Schváleno','ok'], exp:['Prošlé','no'], wait:['Čeká na schválení','wa']},   // [text, barva]
@@ -179,7 +179,9 @@ const UI = {
   editUser: '',          // vedení/uživatelé: id upravovaného uživatele
   editRole: '',          // vedení/uživatelé: role v otevřeném editoru
   userMsg: '', userMsgOk: false,  // vedení/uživatelé: výsledek poslední akce
-  asTeam: '',            // správce: kategorie, za kterou právě pracuje jako trenér
+  asTeam: '',            // správce / šéftrenér mládeže: kategorie, za kterou pracuje jako trenér / kterou si prohlíží
+  coMonth: '',           // šéftrenér mládeže / Trenéři: zobrazený měsíc '2026-10' ('' = tento měsíc)
+  coTeam: '',            // šéftrenér mládeže / Trenéři: filtr kategorie ('' = všechny)
   resEvent: '',          // trenér: turnaj, u kterého se zapisuje / upravuje utkání
   resEdit: 0,            // trenér: id upravovaného utkání turnaje (0 = nové utkání)
   admMsg: '', admOk: false,   // správa: výsledek poslední akce

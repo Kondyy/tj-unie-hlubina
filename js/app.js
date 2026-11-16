@@ -1,6 +1,6 @@
 /* TJ Unie Hlubina – 6/6 aplikace: záložky podle role, vykreslení stránky a start. */
 /* =====================================================================
-   9. App – záložky podle role (p rodič, c trenér, v vedení, a správce) a vykreslení stránky
+   9. App – záložky podle role (p rodič, c trenér, v vedení, a správce, s šéftrenér mládeže) a vykreslení stránky
    ===================================================================== */
 const TABS = {
   p: [ {id:'cal',  label:'📅 Přehled',              view:() => Calendar.view()},
@@ -28,6 +28,46 @@ const TABS = {
 /* Správce = vedení + všechny trenérské záložky (za kategorii vybranou v hlavičce) */
 TABS.a = [...TABS.v.filter(t => t.id != 'set'), ...TABS.c.filter(t => t.id != 'plan' && t.id != 'set'), TABS.v.find(t => t.id == 'set')];
 
+/* Šéftrenér mládeže = trenérské záložky jen ke čtení (kategorii přepíná v hlavičce jako správce) + docházka trenérů po měsících */
+TABS.s = [TABS.c.find(t => t.id == 'att'), TABS.c.find(t => t.id == 'ev'),
+          {id:'tr', label:'🧢 Trenéři', view:() => CoachMonth.view()},
+          ...TABS.c.filter(t => !['att', 'ev'].includes(t.id))];
+
+/* ---------------------------------------------------------------------
+   ReadOnly – šéftrenér mládeže vidí vše jako trenér, ale nic neupravuje.
+   Po vykreslení se v obsahu stránky vypnou ovládací prvky, které by něco měnily
+   (tlačítka se skryjí, pole se zamknou). Zápis navíc odmítne i databáze (RLS ve schema.sql).
+   --------------------------------------------------------------------- */
+class ReadOnly {
+  /** Povolené akce: navigace, filtry, chat a soukromé zprávy, vlastní nastavení a profil. */
+  static OK = ['App.', 'Auth.', 'Profile.', 'Notifs.', 'Theme.', 'Push.', 'Chat.', 'Dm.', 'Tpl.', 'Week.', 'CoachMonth.', 'Report.', 'ResultImg.', 'UI.',
+    'this.', 'event.', 'Attendance.open', 'Attendance.close', 'Events.openMatch', 'Events.closeMatch', 'Events.toggleNomination',
+    'Calendar.openResult', 'Calendar.closeResult', 'Roster.open', 'Roster.close', 'Roster.sortBy', 'Roster.setFilter', 'Roster.resetFilter',
+    'Notes.filter', 'Parents.search', 'Planner.setDay', 'Settings.pref', 'Settings.export', 'Settings.calCopy', 'Settings.calCreate', 'Settings.calReset'];
+  static KEEP = ['chat-input', 'dm-search', 'note-q', 'ov-search', 'pa-search', 'pay-search'];   // pole, do kterých smí psát
+  static on(u) { return !!u && u.r == 's'; }
+  static allowed(code) {
+    return (code.match(/\b[A-Za-z_]+\.[A-Za-z_]+/g) || []).every(c => ReadOnly.OK.some(k => k.endsWith('.') ? c.startsWith(k) : c == k));
+  }
+  static apply(root) {
+    const main = root.querySelector('main'); if (!main) return;
+    main.classList.add('ro');
+    main.querySelectorAll('[onclick],[onchange],[oninput],[onkeydown]').forEach(el => {
+      const code = ['onclick', 'onchange', 'oninput', 'onkeydown'].map(a => el.getAttribute(a) || '').join(';');
+      if (ReadOnly.allowed(code)) return;
+      ['onclick', 'onchange', 'oninput', 'onkeydown'].forEach(a => el.removeAttribute(a));
+      if (/^(BUTTON|INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) el.disabled = true;
+      else if (el.tagName == 'A') el.remove();
+      else el.style.cursor = 'default';
+    });
+    main.querySelectorAll('input,select,textarea').forEach(el => {
+      if (el.disabled || el.type == 'search' || ReadOnly.KEEP.includes(el.id) || el.onchange || el.oninput || el.onkeydown) return;
+      el.disabled = true;
+    });
+    main.querySelectorAll('input[type=file]:disabled').forEach(el => { const l = el.closest('label'); if (l) l.style.display = 'none'; });   // „Nahrát fotku“
+  }
+}
+
 class App {
   /** Vykreslí celou stránku (přihlašovací obrazovku, nebo hlavičku + záložky + obsah). */
   static render() {
@@ -45,6 +85,7 @@ class App {
       root.innerHTML = `${App.header(u, list, unread)}<main class="wrap">${noKid ? '' : App.tabBar(u)}${Offline.banner()}${body}</main>${UI.modal ? Calendar.excuseModal() : ''}${UI.resView ? Calendar.resultModal() : ''}${UI.profile || Profile.forced(u) ? Profile.modal() : (!u.consent ? Profile.consentModal() : '')}`;
     }
     if (UI.toast) root.insertAdjacentHTML('beforeend', `<div class="toast ${UI.toastOk ? 'good' : ''}" role="status">${esc(UI.toast)}</div>`);
+    if (ReadOnly.on(UI.user)) ReadOnly.apply(root);                  // šéftrenér mládeže: jen ke čtení
     App.restore(root, keep);
     Look.reuseImgs(root, imgs);                                       // už načtené fotky se znovu nedekódují (plynulé překreslení)
     Look.after(root);                                                 // ikony místo emoji, odpočet akce, přechod záložek (js/vzhled.js)
@@ -86,8 +127,8 @@ class App {
       ? (u.kids.length > 1
           ? `<select onchange="App.switchKid(this.value)">${u.kids.map(k => `<option value="${esc(k)}" ${k == UI.kid ? 'selected' : ''}>${esc(k)} · ${esc(Model.team(k))}</option>`).join('')}</select>`
           : `<span class="pill ok">${esc(UI.kid)} · ${esc(Model.team(UI.kid))}</span>`)
-      : u.r == 'a'
-        ? `<select onchange="App.switchTeam(this.value)" title="Kategorie, za kterou pracujete jako trenér">${CONFIG.planner.teams.map(t => `<option ${t == u.team ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`
+      : u.r == 'a' || u.r == 's'
+        ? `<select onchange="App.switchTeam(this.value)" title="${u.r == 's' ? 'Kategorie, kterou si prohlížíte' : 'Kategorie, za kterou pracujete jako trenér'}">${CONFIG.planner.teams.map(t => `<option ${t == u.team ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`
         : '';
     return `<header class="hd"><div class="wrap hdi"><img class="lg" src="${LOGO}" alt="${CLUB}">
       <div class="ttl"><b>${CLUB}</b><span>${u.role} · ${esc(u.name)}${u.team ? ' · ' + esc(u.team) : ''}</span></div>${kid}
@@ -115,7 +156,7 @@ class App {
   static toggleMore()    { UI.more = !UI.more; App.render(); }
   static toggleBell()    { UI.bell = !UI.bell; App.render(); }
   /** Rodič přepne dítě → přepne se celý dashboard i chat. */
-  /** Správce přepne kategorii, za kterou pracuje jako trenér. */
+  /** Správce (a šéftrenér mládeže) přepne kategorii, za kterou pracuje jako trenér / kterou si prohlíží. */
   static switchTeam(t) { UI.asTeam = t; UI.user.team = t; UI.player = ''; UI.attEvent = 0; UI.resEvent = ''; UI.nomEvent = 0; App.render(); }
   static switchKid(name) { UI.kid = name; UI.chatTeam = Model.team(name); UI.qr = null; App.render(); }
 }
