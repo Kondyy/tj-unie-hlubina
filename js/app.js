@@ -40,7 +40,7 @@ TABS.s = [TABS.c.find(t => t.id == 'att'), TABS.c.find(t => t.id == 'ev'),
    --------------------------------------------------------------------- */
 class ReadOnly {
   /** Povolené akce: navigace, filtry, chat a soukromé zprávy, vlastní nastavení a profil. */
-  static OK = ['App.', 'Auth.', 'Profile.', 'Notifs.', 'Theme.', 'Push.', 'Chat.', 'Dm.', 'Tpl.', 'Week.', 'CoachMonth.', 'Report.', 'ResultImg.', 'UI.',
+  static OK = ['App.', 'Auth.', 'Profile.', 'Notifs.', 'Theme.', 'Push.', 'Chat.', 'Dm.', 'Tpl.', 'Week.', 'CoachMonth.', 'HeadNotif.', 'Report.', 'ResultImg.', 'UI.',
     'this.', 'event.', 'Attendance.open', 'Attendance.close', 'Events.openMatch', 'Events.closeMatch', 'Events.toggleNomination',
     'Calendar.openResult', 'Calendar.closeResult', 'Roster.open', 'Roster.close', 'Roster.sortBy', 'Roster.setFilter', 'Roster.resetFilter',
     'Notes.filter', 'Parents.search', 'Planner.setDay', 'Settings.pref', 'Settings.export', 'Settings.calCopy', 'Settings.calCreate', 'Settings.calReset'];
