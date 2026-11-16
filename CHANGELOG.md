@@ -6,6 +6,17 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 16. 11. 2026 (záložka Hráči)
+
+- Záložka **Soupiska** se jmenuje **Hráči**.
+- Seznam hráčů je přehlednější: menší karty, na počítači jsou 2–3 hráči vedle sebe, na telefonu zůstává jeden pod druhým.
+- **Řazení**: abeceda (podle příjmení), docházka (nejlepší nahoře), ročník (nejstarší nahoře), číslo dresu. Opakovaný klik obrátí pořadí.
+- **Filtr**: podle ročníku a podle docházky (zelená / žlutá / červená pásma).
+
+**V Supabase:** nic.
+
+---
+
 ## 16. 11. 2026 (přepínání týdnů)
 
 - V **📅 Přehledu** (rodič) a v **⚽ Trénincích** a **🏆 Zápasech** (trenér) je pod nadpisem lišta **‹ Tento týden 16. 11. – 22. 11. ›**. Šipkou › se přejde na příští týden a dál (až 4 týdny dopředu), šipkou ‹ zpět. Tlačítko **↩ Zpět na tento týden** vrátí aktuální týden.

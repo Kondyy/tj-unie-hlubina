@@ -191,6 +191,16 @@ img.av{display:block}
 .pcard .pi{flex:1;min-width:0}
 .pcard .pi b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pr{text-align:right;display:flex;flex-direction:column;gap:2px;align-items:flex-end}
+/* Záložka Hráči: mřížka karet (na počítači 2–3 hráči v řádku), řazení a filtr */
+.col.wide{max-width:none;width:100%}
+.plist{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px;margin-bottom:10px}
+.plist>.card{margin:0}
+.plist .pcard{padding:10px 12px;gap:10px}
+.plf{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.plf .row{align-items:center;gap:6px}
+.plf .row>span{flex:none}
+.plf .chip{flex:none;padding:6px 11px;font-size:14px}
+.plf select{flex:1 1 180px;width:auto;margin:0}
 .stat{text-align:center;margin:0;padding:12px 6px}
 .stat b{display:block;font-size:30px;font-family:var(--disp);font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums}
 

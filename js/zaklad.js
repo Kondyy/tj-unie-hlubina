@@ -22,7 +22,7 @@
           Payments   platby, dokumenty, import         (rodič + vedení)
           Attendance docházka a účast trenéra          (trenér)
           Events     správa událostí a nominace        (trenér)
-          Roster     soupiska a profily hráčů          (trenér)
+          Roster     hráči (seznam) a profily         (trenér)
           Notes      trenérský deník                   (trenér)
           Chat       chaty kategorií + zprávy od klubu (rodič + trenér)
           Messages   zprávy vedení (komu co poslat)    (vedení)
@@ -161,6 +161,10 @@ const UI = {
   player: '',            // soupiska: id otevřeného hráče ('' = seznam)
   addPlayer: false,      // soupiska: je otevřený formulář nového hráče?
   playerMsg: '',         // soupiska: chyba formuláře
+  plSort: 'az',          // hráči: řazení az (abeceda) | att (docházka) | by (ročník) | no (číslo dresu)
+  plDesc: false,         // hráči: obrácené pořadí
+  plYear: '',            // hráči: filtr ročníku ('' = všechny)
+  plAtt: '',             // hráči: filtr docházky g / y / r ('' = jakákoli)
   chatTeam: '',          // chat: vybraná kategorie
   chatSub: 'team',       // chat: 'team' (chat kategorie) | 'club' (zprávy od klubu)
   focusChat: false,      // po odeslání vrátit kurzor do pole zprávy
