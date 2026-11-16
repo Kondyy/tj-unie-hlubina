@@ -32,6 +32,7 @@ class App {
   /** Vykreslí celou stránku (přihlašovací obrazovku, nebo hlavičku + záložky + obsah). */
   static render() {
     const root = $('#app'), keep = App.capture(root), imgs = Look.keepImgs(root);
+    const ob = $('#chat-box'), cs = ob && {k: ob.dataset.k, top: ob.scrollTop, end: ob.scrollHeight - ob.scrollTop - ob.clientHeight < 40};   // kde byl chat odrolovaný
     if (!UI.user) root.innerHTML = Auth.view();
     else {
       const u = UI.user;
@@ -49,7 +50,9 @@ class App {
     Look.after(root);                                                 // ikony místo emoji, odpočet akce, přechod záložek (js/vzhled.js)
     if (!UI.user) Captcha.mount();
     // po vykreslení: chat odroluj dolů a případně vrať kurzor do pole zprávy
-    const box = $('#chat-box'); if (box) box.scrollTop = box.scrollHeight;
+    // (když si uživatel v tomtéž chatu odroloval výš – např. dal reakci na starší zprávu – zůstane, kde byl)
+    const box = $('#chat-box');
+    if (box) box.scrollTop = cs && cs.k && cs.k == box.dataset.k && !cs.end && !UI.focusChat ? cs.top : box.scrollHeight;
     if (UI.focusChat) { UI.focusChat = false; const i = $('#chat-input'); if (i) i.focus(); }
   }
 

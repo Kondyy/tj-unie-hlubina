@@ -6,6 +6,18 @@ Po každé změně databáze spusťte v **Supabase → SQL Editor** celý soubor
 
 ---
 
+## 16. 11. 2026 (reakce v chatu)
+
+- Pod každou zprávou v **💬 Chatu** kategorie (i v chatu trenérů) jsou tlačítka **👍** a **👎** s počtem reakcí. Počty vidí všichni v chatu.
+- Každý může mít u zprávy jen jednu reakci: druhým klikem na stejný palec ji zruší, klikem na druhý palec ji změní. Vaše reakce je zvýrazněná.
+- Po najetí myší (na telefonu podržením) se ukáže, kdo reagoval.
+- Reakce se ostatním objeví hned (bez obnovení stránky). Se smazáním zprávy se smažou i reakce.
+- Při klepnutí na reakci u starší zprávy už chat neodskočí dolů.
+
+**V Supabase:** spusťte v SQL Editoru celý `schema.sql` (přidá tabulku `chat_reactions` s pravidly přístupu). Dokud to neuděláte, reakce se nedají uložit.
+
+---
+
 ## 16. 11. 2026 (záložka Hráči)
 
 - Záložka **Soupiska** se jmenuje **Hráči**.

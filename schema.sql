@@ -1546,6 +1546,40 @@ end $$;
 update public.events e set time_end = lpad((p.end_min / 60)::text, 2, '0') || ':' || lpad((p.end_min % 60)::text, 2, '0')
   from public.plan p where e.plan_id = p.id and e.kind = 't' and e.time_end = '';
 
+-- Reakce na zprávy v chatu (👍 / 👎): každý má u zprávy nejvýš jednu reakci, může ji změnit nebo zrušit.
+-- Kategorii (team) a jméno doplní databáze ze zprávy a profilu, takže je nelze podvrhnout; vidí je, kdo vidí chat.
+create table if not exists public.chat_reactions (
+  message_id bigint not null references public.chat_messages(id) on delete cascade,   -- smazaná zpráva = smazané reakce
+  user_id    uuid not null default auth.uid() references public.profiles(id) on delete cascade,
+  team       text not null default '',
+  user_name  text not null default '',
+  kind       smallint not null check (kind in (1, -1)),                                   -- 1 = 👍, -1 = 👎
+  created_at timestamptz not null default now(),
+  primary key (message_id, user_id)
+);
+create index if not exists chat_reactions_team_idx on public.chat_reactions(team, message_id);
+create index if not exists chat_reactions_user_idx on public.chat_reactions(user_id);
+create or replace function public.chat_react_before() returns trigger
+language plpgsql security definer set search_path = public as
+$$ begin
+  new.user_id   := auth.uid();
+  new.team      := coalesce((select m.team from public.chat_messages m where m.id = new.message_id), '');
+  new.user_name := coalesce((select p.name from public.profiles p where p.id = auth.uid()), '');
+  return new;
+end $$;
+drop trigger if exists chat_react_before on public.chat_reactions;
+create trigger chat_react_before before insert or update on public.chat_reactions
+  for each row execute function public.chat_react_before();
+alter table public.chat_reactions enable row level security;
+drop policy if exists creact_select on public.chat_reactions;
+create policy creact_select on public.chat_reactions for select to authenticated using (public.can_chat(team));
+drop policy if exists creact_insert on public.chat_reactions;
+create policy creact_insert on public.chat_reactions for insert to authenticated with check (user_id = (select auth.uid()) and public.can_chat(team));
+drop policy if exists creact_update on public.chat_reactions;
+create policy creact_update on public.chat_reactions for update to authenticated using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()) and public.can_chat(team));
+drop policy if exists creact_delete on public.chat_reactions;
+create policy creact_delete on public.chat_reactions for delete to authenticated using (user_id = (select auth.uid()));
+
 -- ---------------------------------------------------------------------
 -- 5. OPRÁVNĚNÍ ROLÍ (RLS je filtruje; anon nemá k datům přístup)
 -- ---------------------------------------------------------------------
@@ -1580,7 +1614,7 @@ alter default privileges in schema public revoke truncate, references, trigger o
 do $$ declare t text; begin
   foreach t in array array['chat_messages','attendance','notifications','events','club_messages','plan',
                            'nominations','player_payments','players','parent_players','profiles','results','teams','settings','direct_messages','coach_attendance','player_absence','absence_periods',
-                           'event_comments','venues','event_plans','notes']
+                           'event_comments','venues','event_plans','notes','chat_reactions']
   loop
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
